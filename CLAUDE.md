@@ -34,10 +34,12 @@ Veilwalkers is an Android AR monster-hunting / collection game. The player uses 
 - All purchases via official Google Play Billing — no third-party payment.
 - Content rating Teen: stylized scary, no realistic gore/extreme horror.
 
-## Credit economy (from design doc — subject to balancing)
+## Credit economy (canon: architecture Economy Model Revision — subject to balancing)
 
-20 free credits on first launch. Spend costs: Lure 1 · Premium Lure 4 · Slay 3 · Strong Capture 2 · Stability Boost 1 · Multi-Lure 5 · Nightveil Filter 2 · Retry 1.
-Credit packs: 50/$1.99 · 150+20/$4.99 · 400+100+Rare Lure/$9.99.
+20 free credits on first launch. **Credits buy only 4 actions:** Basic Lure 1 · Premium Lure 4 · Multi-Lure 5 · Slay 3.
+**Extras are XP-earned charges, never purchasable:** Strong Capture, Stability Boost, Nightveil Filter — granted by leveling up (Capture/Slay earn XP; Slay earns more), consumed one charge per use. **Retry is free** (just re-attempt). Scan and base Capture are free.
+Credit packs: 50/$1.99 · 150+20/$4.99 · 400+100+**Guaranteed-Rare Lure**/$9.99.
+(See `docs/architecture.md` §"Economy Model Revision" — it supersedes the design doc's original 8-cost table.)
 
 ## Planning method
 

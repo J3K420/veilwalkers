@@ -685,8 +685,9 @@ item that forces a spawn of a **Rare-tier or better** Monster (stronger than Pre
 "higher chance"). This gives the top pack a real identity.
 
 **Minimum rarity contract (architecture commits to this; full model is OQ-2 balancing):**
-- `Rarity` is an **ordered enum** in `Monsters` (e.g. `Common < Uncommon < Rare < Legendary`
-  — exact set TBD via OQ-2). A named **`Rare` threshold** exists.
+- `Rarity` is an **ordered enum** in `Monsters`: `Common < Uncommon < Rare < Epic < Nightmare`
+  (resolved via the UX Dread Ladder, OQ-2; rarity = scariness = materialization tier). A named
+  **`Rare` threshold** exists and is the Guaranteed-Rare Lure floor.
 - `MonsterDefinition.Rarity` is set per Monster.
 - A `GuaranteedRareLure` resolves by filtering the spawn pool to `Rarity >= Rarity.Rare` and
   picking from that subset; if the MVP roster (3–5 Monsters) has none at/above Rare, the

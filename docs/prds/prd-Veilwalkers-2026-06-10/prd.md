@@ -78,15 +78,16 @@ Veilwalkers is free-to-play, funded by **Monster Credits** purchased through Goo
 - **Lure** — The action of spending Credits to summon a Monster into the current AR view. Variants: **Basic Lure** (1 Credit), **Premium Lure** (4 Credits, higher rare chance), **Multi-Lure** (5 Credits, two Monsters at once).
 - **Encounter** — A single active session with one or more lured Monsters, during which the player may Scan, Capture, or Slay.
 - **Scan** — A free action that reveals information about a Monster in an Encounter and contributes to its Codex entry.
-- **Capture** — The action of adding a Monster to the Codex non-violently. Base attempt is free; **Strong Capture** (2 Credits) raises success rate.
+- **Capture** — The action of adding a Monster to the Codex non-violently. Base attempt is free; **Strong Capture** raises success rate by consuming one **XP-earned charge** (not a Credit cost — see §Economy Model).
 - **Slay** — The action (3 Credits) of defeating a Monster in combat for superior rewards (rare materials, higher XP, exclusive variants/trophies) versus Capture.
-- **Stability Boost** — A 1-Credit consumable that makes the current Monster easier to Scan/Capture/Slay for the rest of the Encounter.
-- **Nightveil Filter** — A 2-Credit consumable applying an atmospheric visual filter plus a small rarity boost.
-- **Retry** — A 1-Credit action to re-attempt a failed Capture or Slay within the same Encounter.
+- **Stability Boost** — A consumable **charge** (XP-earned, not purchasable) that makes the current Monster easier to Scan/Capture/Slay for the rest of the Encounter.
+- **Nightveil Filter** — A consumable **charge** (XP-earned, not purchasable) applying an atmospheric visual filter plus a small rarity boost.
+- **Retry** — A **free** action to re-attempt a failed Capture or Slay within the same Encounter (re-attempt only; no Credit cost).
+- **XP / Charges** — Playing earns player-wide XP (Capture and Slay both grant it; Slay grants more). Leveling up grants **charges** of the extras (Strong Capture, Stability Boost, Nightveil Filter). Charges are consumed one-per-use and are **never** purchasable with Credits.
 - **Codex** — The player's persistent collection of discovered Monsters, showing progress toward 67 and per-Monster detail entries.
 - **The Pit** — A placeable AR miniature Roman colosseum in which **Miniaturized** captured Monsters fight. Signature feature; **post-MVP** (see §4.6 and §6.2).
 - **Miniaturize** — The action (1–2 Credits) of shrinking a captured Monster into a fightable token for The Pit. Post-MVP.
-- **Rarity** — A Monster's scarcity tier, affecting Lure odds and reward value. `[ASSUMPTION: discrete tiers exist (e.g., Common/Rare/…); exact tier names/count are a design detail — see OQ-2.]`
+- **Rarity** — A Monster's scarcity tier, affecting Lure odds and reward value. **Five ordered tiers (canonical, resolves OQ-2): Common < Uncommon < Rare < Epic < Nightmare.** Rarity = scariness = materialization tier (one axis; see UX `EXPERIENCE.md` Dread Ladder). **Rare** is the Guaranteed-Rare Lure threshold (Veil Pack guarantees Rare-or-better).
 
 ## 4. Features
 
@@ -146,7 +147,7 @@ The system requests Camera permission with disclosure and degrades gracefully if
 
 ### 4.3 Encounter: Lure, Scan, Capture, Slay
 
-**Description:** The heart of the loop. From AR Mode the player spends Credits to **Lure** a Monster, then chooses among **Scan** (free), **Capture** (free base / **Strong Capture** 2 Credits), and **Slay** (3 Credits), with consumables (**Stability Boost**, **Nightveil Filter**) and **Retry** available to shape odds and outcomes. Captures fill the Codex; Slays yield superior loot. Realizes UJ-1, UJ-2, UJ-3. All Credit costs are taken from the design doc economy and are `[ASSUMPTION: subject to balancing]` per the design doc's own note.
+**Description:** The heart of the loop. From AR Mode the player spends Credits to **Lure** a Monster, then chooses among **Scan** (free), **Capture** (free base / **Strong Capture** via an XP-earned charge), and **Slay** (3 Credits), with consumable **charges** (**Stability Boost**, **Nightveil Filter** — XP-earned) and a free **Retry** available to shape odds and outcomes. Captures fill the Codex; Slays yield superior loot. Realizes UJ-1, UJ-2, UJ-3. Per the **Economy Model** (architecture's revision, canonical), Credits buy only Lure and Slay; the extras are earned by playing, not bought. All economy numbers are `[ASSUMPTION: subject to balancing — data-driven in EconomyConfig]`.
 
 **Functional Requirements:**
 
@@ -167,12 +168,12 @@ A player can Scan a Monster in an Encounter to reveal information and progress i
 - Scanning reveals at least partial Codex data even before Capture/Slay.
 
 #### FR-8: Capture a Monster (free base / Strong Capture)
-A player can attempt to Capture a Monster; base attempt is free, **Strong Capture** (2 Credits) raises success rate. A successful Capture adds the Monster to the Codex. Realizes UJ-1, UJ-3.
+A player can attempt to Capture a Monster; base attempt is free, **Strong Capture** consumes one XP-earned charge to raise success rate. A successful Capture adds the Monster to the Codex. Realizes UJ-1, UJ-3.
 
 **Consequences (testable):**
 - A successful Capture creates/updates the Monster's Codex entry and increments the "X / 67" count if newly discovered.
-- Strong Capture deducts 2 Credits and applies a higher success probability than the free attempt.
-- A failed Capture leaves the Encounter active and offers **Retry**.
+- Strong Capture consumes exactly one Strong-Capture charge (never Credits) and applies a higher success probability than the free attempt; with zero charges it is blocked with an "earn via XP" hint and never goes negative.
+- A failed Capture leaves the Encounter active and offers a **free Retry**.
 
 #### FR-9: Slay a Monster (combat for superior loot)
 A player can Slay a Monster (3 Credits) to defeat it for rewards strictly better than Capture (rare materials, higher XP, exclusive variants/trophies). Realizes UJ-2.
@@ -182,17 +183,21 @@ A player can Slay a Monster (3 Credits) to defeat it for rewards strictly better
 - Slay rewards are strictly superior to Capture rewards for the same Monster (materials and/or XP and/or variant).
 - `[ASSUMPTION: MVP Slay is "tap-to-slay" / light combat, not a deep combat system — design doc Open Question; see OQ-6.]`
 
-#### FR-10: Encounter consumables and Retry
-A player can apply **Stability Boost** (1), **Nightveil Filter** (2), and **Retry** (1) within an Encounter.
+#### FR-10: Encounter consumables (XP charges) and Retry
+A player can apply **Stability Boost** and **Nightveil Filter** (each consuming one XP-earned charge) and **Retry** (free) within an Encounter.
 
 **Consequences (testable):**
-- Stability Boost raises Scan/Capture/Slay ease for the remainder of the current Encounter and deducts 1 Credit.
-- Nightveil Filter applies the visual filter and a small rarity boost and deducts 2 Credits.
-- Retry re-enables a failed Capture or Slay attempt and deducts 1 Credit.
+- Stability Boost raises Scan/Capture/Slay ease for the remainder of the current Encounter and consumes one Stability-Boost charge (never Credits).
+- Nightveil Filter applies the visual filter and a small rarity boost and consumes one Nightveil-Filter charge (never Credits).
+- Using any extra with zero charges is blocked with an "earn via XP" hint and never goes negative.
+- Retry re-enables a failed Capture or Slay attempt at no cost (free re-attempt).
 
 **Feature-specific NFRs:**
 - Every Credit-spending action must show its cost *before* the spend is committed (no surprise deductions).
 - An Encounter survives a Shop round-trip without loss (UJ-2): returning from a purchase resumes the same Encounter.
+
+**Economy Model (canonical — supersedes the original design-doc cost table):**
+Credits buy exactly **4 actions**: Basic Lure (1), Premium Lure (4), Multi-Lure (5), Slay (3). **Scan** and **base Capture** are free. The odds/utility extras — **Strong Capture, Stability Boost, Nightveil Filter** — are **charges earned through XP** (Capture and Slay both grant XP; Slay grants more) and are **never purchasable**. **Retry is free.** All numbers are data-driven (`EconomyConfig`) and subject to balancing (OQ-9). This model is defined in `docs/architecture.md` §"Economy Model Revision" and is authoritative over the design doc's original 8-cost table.
 
 ### 4.4 Codex (Collection)
 
@@ -205,7 +210,7 @@ A player can view their collection with a visible "X / 67" progress indicator an
 
 **Consequences (testable):**
 - Discovering a new Monster increments the progress count by exactly one.
-- Undiscovered Monsters appear as locked/silhouette slots up to 67. `[ASSUMPTION: locked slots are shown to convey the finite 67 goal — see OQ-7.]`
+- Undiscovered Monsters appear in the 67-grid using a **hybrid gradual-reveal (canonical, resolves OQ-7):** three slot states — **Discovered** (full art + tier-colored "caught" stamp), **`???` silhouette** (undiscovered in a tier the player has *begun* encountering — shows the shape you're missing), and **`?` blank** (undiscovered in higher tiers not yet reached — no silhouette, preserves the scary reveal). As the player climbs the Dread Ladder, more silhouettes unlock into view, so the collection's scope escalates with the arc.
 - The detail view shows art, stats, rarity, and lore for discovered Monsters.
 
 #### FR-12: Local progression persistence
@@ -226,7 +231,7 @@ A player can view and purchase Credit Packs via Google Play Billing; a completed
 
 **Consequences (testable):**
 - The Shop lists at least the three launch packs (see §Monetization) with prices localized by Play.
-- A successful purchase increments the Credit balance by the pack's total (base + bonus) and grants any bundled Rare Lure.
+- A successful purchase increments the Credit balance by the pack's total (base + bonus) and grants any bundled **Guaranteed-Rare Lure** (forces a Rare-tier-or-better spawn — see architecture FR-13 resolution).
 - All purchases route through Google Play Billing; no alternative payment UI exists anywhere in the app.
 
 #### FR-14: Purchase reliability and recovery
@@ -309,12 +314,12 @@ A player can spend Credits to boost a fighter's stats, revive a defeated miniatu
 ## 8. Open Questions
 
 1. **OQ-1 — AR Required vs AR Optional?** Design doc allows either; CLAUDE.md implies AR-required. Confirm the Play listing flag and whether any non-AR onboarding is needed for unsupported devices.
-2. **OQ-2 — Rarity model.** How many rarity tiers, their names, and their Lure-odds curve?
+2. **OQ-2 — Rarity model.** ✅ **RESOLVED (UX Dread Ladder):** five ordered tiers — Common, Uncommon, Rare, Epic, Nightmare; rarity = scariness = materialization tier; Rare = Guaranteed-Rare threshold. *Remaining (balancing, folds into OQ-9):* the per-tier Lure-odds curve.
 3. **OQ-3 — Backend for MVP.** Ship local-only, or include Firebase for cloud sync + server-side purchase verification at launch? (Security vs. timeline trade-off — recommend at least server-side purchase verification.)
 4. **OQ-4 — Rewarded ads in MVP?** Affects Play data-safety disclosure and SDK footprint.
 5. **OQ-5 — AR Safety Warning frequency.** Every AR entry, once per session, or once per day? Confirm against Google Play's current AR policy wording.
 6. **OQ-6 — Slay combat depth.** Tap-to-slay (MVP) vs a light real combat system. Design doc Open Question.
-7. **OQ-7 — Codex presentation.** Bestiary-style (all 67 silhouettes shown) vs personal-journal (only discovered shown). Affects how strongly the "67" goal is felt.
+7. **OQ-7 — Codex presentation.** ✅ **RESOLVED (UX):** neither extreme — a **hybrid gradual reveal**. Three slot states (Discovered / `???` silhouette for tiers begun / `?` blank for tiers not yet reached); silhouettes unlock as the player climbs the Dread Ladder. Balances the felt "67" goal against preserving high-tier reveals.
 8. **OQ-8 — Metric targets.** Confirm/replace all SM targets against comparable AR-game benchmarks.
 9. **OQ-9 — Credit economy balancing.** All costs/pack values are flagged "subject to balancing"; needs an economy simulation pass before launch.
 10. **OQ-10 — Privacy policy + camera/data disclosure copy.** Required for Play; who owns drafting and hosting?
@@ -322,14 +327,14 @@ A player can spend Credits to boost a fighter's stats, revive a defeated miniatu
 ## 9. Assumptions Index
 
 - §2.1 / §2.2 / FR-3 — AR is "AR Required" for MVP; no non-AR fallback. (OQ-1)
-- §3 / FR-9 — Discrete Rarity tiers exist; exact model TBD. (OQ-2)
+- §3 — Rarity is five ordered tiers (Common/Uncommon/Rare/Epic/Nightmare), resolved via the UX Dread Ladder. Only the per-tier odds curve remains (balancing, OQ-9). (OQ-2 resolved)
 - §4.1 FR-1 — No server-side grant-once enforcement in MVP (local re-grant on reinstall). (OQ-3)
 - §4.1 FR-2 — MVP ships daily login reward; rewarded ads are a PM decision. (OQ-4)
 - §4.2 FR-3 — AR Safety Warning shows on *every* AR Mode entry. (OQ-5)
 - §4.2 FR-5 — MVP does not request Location permission (world spawns are Phase 3).
 - §4.3 — All Credit costs are "subject to balancing" (design doc's own note). (OQ-9)
 - §4.3 FR-9 — MVP Slay is light/tap-to-slay, not deep combat. (OQ-6)
-- §4.4 FR-11 — Locked silhouette slots up to 67 are shown to convey the finite goal. (OQ-7)
+- §4.4 FR-11 — Codex uses a hybrid gradual reveal (Discovered / `???` silhouette / `?` blank), tier-gated, resolved via UX. (OQ-7 resolved)
 - §4.4 FR-12 / §4.5 — MVP progression and purchase handling are local-first; cloud sync and server-side verification are post-MVP, with server-side purchase verification recommended as a fast-follow. (OQ-3)
 - §7 — All numeric Success Metric targets are proposed soft-launch defaults pending benchmark confirmation. (OQ-8)
 
@@ -361,8 +366,8 @@ Cross-cutting overlays: AR Safety Warning (on AR entry), "How to Use Credits" he
 - **Launch Credit Packs** *(prices from design doc; `[ASSUMPTION: subject to balancing]`)*:
   - **Starter Pack** — 50 Credits — **$1.99**
   - **Hunter Pack** — 150 Credits + 20 bonus — **$4.99**
-  - **Veil Pack** — 400 Credits + 100 bonus + **Rare Lure** — **$9.99**
-- **Spend design goal:** basic luring stays cheap; **Premium Lure** and **Slay** are the intended primary money drivers. Avoid aggressive paywalls — the free game must remain enjoyable (guarded by SM-C1).
+  - **Veil Pack** — 400 Credits + 100 bonus + **Guaranteed-Rare Lure** (forces Rare-or-better) — **$9.99**
+- **Spend design goal:** basic luring stays cheap; **Premium Lure** and **Slay** are the intended primary money drivers. Per the canonical **Economy Model** (architecture's revision), Credits buy only the 4 actions — Basic/Premium/Multi-Lure and Slay; the success/odds extras (Strong Capture, Stability Boost, Nightveil Filter) are **XP-earned charges, never sold**, which is what keeps basic play cheap (guards SM-C1). Avoid aggressive paywalls — the free game must remain enjoyable.
 - **No** gacha/loot boxes, **no** third-party payment, **no** pay-to-win PvP (no PvP at all in v1).
 
 ## Platform
