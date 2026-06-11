@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veilwalkers — Encounter Mock</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #2E1A47;
+    font-family: 'Arial Black', Impact, sans-serif;
+    color: #FFF6E9;
+    padding: 40px 20px 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Title block ---------- */
+  .title-block {
+    max-width: 980px;
+    margin: 0 auto 40px;
+    text-align: center;
+  }
+  .title-block h1 {
+    font-size: 26px;
+    line-height: 1.25;
+    letter-spacing: 0.5px;
+    text-shadow: 3px 3px 0 #000;
+  }
+  .title-block h1 .accent { color: #FF7A1A; }
+  .title-block h1 .accent2 { color: #2BD9C4; }
+
+  .title-note {
+    display: inline-block;
+    margin-top: 18px;
+    background: #3D2461;
+    border: 4px solid #000;
+    border-radius: 16px;
+    box-shadow: 6px 6px 0 #000;
+    padding: 10px 18px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    max-width: 640px;
+    font-family: 'Arial Black', Impact, sans-serif;
+  }
+  .title-note .hi { color: #FFC73A; }
+
+  /* ---------- Layout of two phones ---------- */
+  .stage {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 60px;
+    margin-top: 10px;
+  }
+  .phone-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 320px;
+  }
+
+  .phone-label {
+    background: #FF7A1A;
+    color: #000;
+    border: 4px solid #000;
+    border-radius: 14px;
+    box-shadow: 6px 6px 0 #000;
+    padding: 9px 14px;
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 22px;
+    letter-spacing: 0.4px;
+  }
+  .phone-label.tier-dread { background: #6A5AC9; color: #FFF6E9; }
+
+  /* ---------- Phone frame ---------- */
+  .phone {
+    position: relative;
+    width: 300px;
+    height: 600px;
+    background: #000;
+    border: 6px solid #000;
+    border-radius: 38px;
+    box-shadow: 8px 8px 0 #000;
+    overflow: hidden;
+  }
+  .screen {
+    position: absolute;
+    inset: 0;
+    border-radius: 32px;
+    overflow: hidden;
+  }
+
+  /* notch */
+  .notch {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 110px; height: 22px;
+    background: #000;
+    border-radius: 0 0 16px 16px;
+    z-index: 60;
+  }
+
+  /* ============================================================
+     CAMERA BACKGROUNDS
+     ============================================================ */
+
+  /* T1 friendly living room — light, warm, bright */
+  .cam-t1 {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(to bottom,
+        #f7e6c8 0%,
+        #f2dcb0 42%,
+        #e6c79a 55%,   /* floor line */
+        #d8b079 100%);
+  }
+  .cam-t1::before { /* warm window light pool */
+    content: "";
+    position: absolute;
+    top: -10%; left: 50%;
+    transform: translateX(-50%);
+    width: 180%; height: 70%;
+    background: radial-gradient(ellipse at center, rgba(255,255,240,0.85), rgba(255,255,240,0) 60%);
+    pointer-events: none;
+  }
+  /* faint furniture suggestion */
+  .cam-t1 .room-detail {
+    position: absolute;
+    bottom: 44%; left: -20px;
+    width: 120px; height: 90px;
+    background: rgba(160,110,60,0.18);
+    border-radius: 14px 14px 0 0;
+    filter: blur(2px);
+  }
+  .cam-t1 .room-detail.r2 {
+    left: auto; right: -30px;
+    width: 140px; height: 130px;
+    background: rgba(120,80,40,0.15);
+  }
+
+  /* T3-T4 dread — same room, dimmed + cooled toward tier color */
+  .cam-dread {
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(to bottom,
+        #2a2740 0%,
+        #2f2748 42%,
+        #34244e 55%,
+        #2a1c40 100%);
+  }
+  .cam-dread .tint {
+    position: absolute; inset: 0;
+    background: linear-gradient(160deg, rgba(106,90,201,0.45), rgba(75,46,107,0.6));
+    mix-blend-mode: multiply;
+  }
+  .cam-dread .room-detail {
+    position: absolute;
+    bottom: 44%; left: -20px;
+    width: 120px; height: 90px;
+    background: rgba(40,30,70,0.5);
+    border-radius: 14px 14px 0 0;
+    filter: blur(2px);
+  }
+  .cam-dread .room-detail.r2 {
+    left: auto; right: -30px;
+    width: 140px; height: 140px;
+  }
+  /* cold spotlight from above on the monster */
+  .cam-dread::before {
+    content: "";
+    position: absolute;
+    top: -5%; left: 50%;
+    transform: translateX(-50%);
+    width: 130%; height: 60%;
+    background: radial-gradient(ellipse at center, rgba(140,150,220,0.18), rgba(140,150,220,0) 60%);
+    pointer-events: none;
+  }
+  /* vignette closing in */
+  .vignette {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 90px 50px rgba(15,8,28,0.9),
+                inset 0 0 40px 10px rgba(0,0,0,0.6);
+    z-index: 30;
+  }
+
+  /* ============================================================
+     MONSTERS
+     ============================================================ */
+  .floor-shadow {
+    position: absolute;
+    bottom: 152px; left: 50%;
+    transform: translateX(-50%);
+    width: 150px; height: 32px;
+    background: rgba(0,0,0,0.32);
+    border-radius: 50%;
+    filter: blur(3px);
+    z-index: 9;
+  }
+  .floor-shadow.dread {
+    background: rgba(0,0,0,0.55);
+    width: 130px;
+  }
+
+  /* --- T1 friendly blob --- */
+  .monster-friendly {
+    position: absolute;
+    bottom: 168px; left: 50%;
+    transform: translateX(-50%);
+    width: 130px; height: 120px;
+    z-index: 12;
+  }
+  .blob-body {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 120px; height: 105px;
+    background: radial-gradient(circle at 38% 32%, #5cf0db, #2BD9C4 55%, #18a695 100%);
+    border: 5px solid #000;
+    border-radius: 60px 60px 52px 52px;
+  }
+  .blob-cheek {
+    position: absolute;
+    width: 18px; height: 12px;
+    background: #FF9E5C;
+    border-radius: 50%;
+    bottom: 30px;
+    opacity: 0.85;
+  }
+  .blob-cheek.l { left: 14px; }
+  .blob-cheek.r { right: 14px; }
+  .eye {
+    position: absolute;
+    width: 30px; height: 32px;
+    background: #FFF6E9;
+    border: 4px solid #000;
+    border-radius: 50%;
+    top: 22px;
+  }
+  .eye.l { left: 24px; }
+  .eye.r { right: 24px; }
+  .eye .pupil {
+    position: absolute;
+    width: 13px; height: 13px;
+    background: #000;
+    border-radius: 50%;
+    top: 8px; left: 7px;
+  }
+  .eye .pupil::after {
+    content: "";
+    position: absolute;
+    width: 5px; height: 5px;
+    background: #fff;
+    border-radius: 50%;
+    top: 1px; left: 1px;
+  }
+  .blob-smile {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    width: 40px; height: 20px;
+    border: 4px solid #000;
+    border-top: none;
+    border-radius: 0 0 40px 40px;
+  }
+  .blob-foot {
+    position: absolute;
+    bottom: -3px;
+    width: 26px; height: 16px;
+    background: #18a695;
+    border: 4px solid #000;
+    border-radius: 0 0 14px 14px;
+  }
+  .blob-foot.l { left: 22px; }
+  .blob-foot.r { right: 22px; }
+  /* tiny antenna */
+  .blob-antenna {
+    position: absolute;
+    top: -14px; left: 50%;
+    transform: translateX(-50%);
+    width: 5px; height: 18px;
+    background: #000;
+  }
+  .blob-antenna::after {
+    content: "";
+    position: absolute;
+    top: -10px; left: -5px;
+    width: 15px; height: 15px;
+    background: #FFC73A;
+    border: 4px solid #000;
+    border-radius: 50%;
+  }
+
+  /* --- Dread monster: tall antlered silhouette w/ glowing eyes --- */
+  .monster-dread {
+    position: absolute;
+    bottom: 168px; left: 50%;
+    transform: translateX(-50%);
+    width: 160px; height: 250px;
+    z-index: 12;
+  }
+  .silhouette {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 96px; height: 210px;
+    background: linear-gradient(to bottom, #120a1e, #1d0f2e 60%, #0c0716);
+    border: 4px solid #000;
+    border-radius: 48px 48px 30px 30px / 70px 70px 24px 24px;
+    box-shadow: 0 0 30px 6px rgba(106,90,201,0.35);
+  }
+  /* hunched shoulders */
+  .silhouette::before {
+    content: "";
+    position: absolute;
+    top: 46px; left: -22px;
+    width: 140px; height: 80px;
+    background: #150b22;
+    border: 4px solid #000;
+    border-radius: 60px 60px 0 0;
+    z-index: -1;
+  }
+  /* antlers */
+  .antler {
+    position: absolute;
+    top: -6px;
+    width: 6px; height: 60px;
+    background: #0c0716;
+    border: 3px solid #000;
+    z-index: 5;
+  }
+  .antler.l { left: 26px; transform: rotate(22deg); transform-origin: bottom; }
+  .antler.r { right: 26px; transform: rotate(-22deg); transform-origin: bottom; }
+  .antler::before, .antler::after {
+    content: "";
+    position: absolute;
+    width: 5px; height: 26px;
+    background: #0c0716;
+    border: 3px solid #000;
+  }
+  .antler::before { top: 8px; left: -14px; transform: rotate(48deg); }
+  .antler::after  { top: 22px; left: 8px; transform: rotate(-44deg); }
+
+  .glow-eye {
+    position: absolute;
+    width: 17px; height: 22px;
+    background: radial-gradient(circle, #fff8c0, #FF7A1A 55%, #FF2E4D 100%);
+    border-radius: 50%;
+    top: 70px;
+    box-shadow: 0 0 14px 4px rgba(255,122,26,0.8);
+    z-index: 6;
+  }
+  .glow-eye.l { left: 28px; transform: rotate(-12deg); }
+  .glow-eye.r { right: 28px; transform: rotate(12deg); }
+  /* extra small eyes */
+  .glow-eye.small { width: 9px; height: 12px; top: 96px; box-shadow: 0 0 8px 2px rgba(255,122,26,0.7); }
+  .glow-eye.small.l { left: 20px; }
+  .glow-eye.small.r { right: 20px; }
+  /* faint clawed arms */
+  .claw {
+    position: absolute;
+    bottom: 30px;
+    width: 8px; height: 70px;
+    background: #0c0716;
+    border: 3px solid #000;
+    border-radius: 6px;
+  }
+  .claw.l { left: -2px; transform: rotate(10deg); }
+  .claw.r { right: -2px; transform: rotate(-10deg); }
+
+  /* ============================================================
+     FLOATING CHROME (shared)
+     ============================================================ */
+  .chrome { position: absolute; z-index: 40; }
+
+  /* back chevron top-left */
+  .back-btn {
+    top: 30px; left: 16px;
+    width: 46px; height: 46px;
+    background: #3D2461;
+    border: 4px solid #000;
+    border-radius: 14px;
+    box-shadow: 6px 6px 0 #000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .back-btn .chev {
+    width: 14px; height: 14px;
+    border-left: 5px solid #FFF6E9;
+    border-bottom: 5px solid #FFF6E9;
+    transform: rotate(45deg) translate(3px, -1px);
+  }
+
+  /* credit pill top-right */
+  .credit-pill {
+    top: 30px; right: 16px;
+    background: #FFC73A;
+    color: #000;
+    border: 4px solid #000;
+    border-radius: 24px;
+    box-shadow: 6px 6px 0 #000;
+    padding: 8px 16px 8px 12px;
+    font-size: 18px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .credit-pill .hex {
+    display: inline-block;
+    width: 18px; height: 18px;
+    background: #FF7A1A;
+    border: 3px solid #000;
+    clip-path: polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+  }
+  .credit-pill.low { background: #FF7A1A; color: #FFF6E9; }
+  .credit-pill.low .hex { background: #FFC73A; }
+
+  /* charge-item badges (earned counts, NOT costs) */
+  .charges {
+    bottom: 138px; right: 12px;
+    display: flex; flex-direction: column; gap: 10px;
+    align-items: flex-end;
+  }
+  .charge-badge {
+    background: #3D2461;
+    border: 4px solid #000;
+    border-radius: 14px;
+    box-shadow: 5px 5px 0 #000;
+    padding: 6px 10px;
+    display: flex; align-items: center; gap: 7px;
+    font-size: 9.5px;
+    letter-spacing: 0.2px;
+    color: #FFF6E9;
+    line-height: 1.1;
+  }
+  .charge-icon {
+    width: 22px; height: 22px;
+    border: 3px solid #000;
+    border-radius: 7px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .charge-icon.stab { background: #2BD9C4; }
+  .charge-icon.nv { background: #6A5AC9; }
+  .charge-icon .glyph { font-size: 11px; color: #000; }
+  .charge-count {
+    background: #FFC73A;
+    color: #000;
+    border: 2px solid #000;
+    border-radius: 8px;
+    padding: 1px 5px;
+    font-size: 11px;
+  }
+
+  /* ---------- ACTION BAR ---------- */
+  .action-bar {
+    bottom: 26px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 10px;
+    align-items: flex-end;
+  }
+  .act-btn {
+    border: 5px solid #000;
+    border-radius: 18px;
+    box-shadow: 6px 6px 0 #000;
+    padding: 12px 6px;
+    width: 78px;
+    text-align: center;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    color: #000;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .act-btn.scan { background: #2BD9C4; }
+  .act-btn.capture { background: #FF7A1A; }
+  .act-btn.slay {
+    background: #FF2E4D;
+    color: #FFF6E9;
+    text-shadow: 1px 1px 0 #000;
+  }
+  .act-btn.slay.hot {
+    box-shadow: 6px 6px 0 #000, 0 0 18px 4px rgba(255,46,77,0.85);
+  }
+
+  /* button icons (CSS) */
+  .ic { width: 26px; height: 26px; position: relative; }
+  /* scan: reticle */
+  .ic-scan {
+    border: 4px solid #000;
+    border-radius: 7px;
+  }
+  .ic-scan::before, .ic-scan::after {
+    content: ""; position: absolute; background: #000;
+  }
+  .ic-scan::before { width: 4px; height: 22px; left: 7px; top: -1px; }
+  .ic-scan::after { width: 22px; height: 4px; top: 7px; left: -1px; }
+  /* capture: net/orb */
+  .ic-capture {
+    border: 4px solid #000;
+    border-radius: 50%;
+  }
+  .ic-capture::after {
+    content: ""; position: absolute;
+    width: 22px; height: 4px;
+    background: #000;
+    top: 7px; left: -1px;
+  }
+  /* slay: skull + crossed swords */
+  .ic-slay {
+    width: 26px; height: 26px;
+  }
+  .ic-slay .skull {
+    position: absolute;
+    width: 16px; height: 15px;
+    background: #FFF6E9;
+    border: 3px solid #000;
+    border-radius: 8px 8px 5px 5px;
+    left: 5px; top: 1px;
+    z-index: 3;
+  }
+  .ic-slay .skull::before, .ic-slay .skull::after {
+    content: ""; position: absolute;
+    width: 4px; height: 4px;
+    background: #000;
+    border-radius: 50%;
+    top: 3px;
+  }
+  .ic-slay .skull::before { left: 2px; }
+  .ic-slay .skull::after { right: 2px; }
+  .ic-slay .sword {
+    position: absolute;
+    width: 4px; height: 28px;
+    background: #FFF6E9;
+    border: 2px solid #000;
+    top: -1px; left: 11px;
+    z-index: 1;
+  }
+  .ic-slay .sword.a { transform: rotate(45deg); }
+  .ic-slay .sword.b { transform: rotate(-45deg); }
+
+  /* materialization hint badge above action bar */
+  .settle-hint {
+    bottom: 100px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.55);
+    border: 3px solid #000;
+    border-radius: 12px;
+    padding: 5px 10px;
+    font-size: 9px;
+    color: #FFF6E9;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+
+  /* ---------- captions ---------- */
+  .caption {
+    margin-top: 20px;
+    width: 300px;
+    background: #3D2461;
+    border: 4px solid #000;
+    border-radius: 14px;
+    box-shadow: 6px 6px 0 #000;
+    padding: 11px 13px;
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: center;
+    font-family: 'Arial Black', Impact, sans-serif;
+  }
+  .caption .k { color: #2BD9C4; }
+  .caption.dread .k { color: #FF7A1A; }
+
+  .footer-note {
+    max-width: 720px;
+    margin: 46px auto 0;
+    text-align: center;
+    font-size: 11px;
+    color: #b9a9d4;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+  <div class="title-block">
+    <h1>The Encounter — same UI <span class="accent2">chrome</span>, ambiance diffuses the <span class="accent">dread scale</span> by the lured monster's rarity tier.</h1>
+    <div class="title-note">
+      Action bar is <span class="hi">HIDDEN during materialization</span>, then pops in when the monster settles (shown here in settled state).
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <!-- ============================ PHONE 1 — T1 COMMON ============================ -->
+    <div class="phone-col">
+      <div class="phone-label">COMMON ENCOUNTER (T1 — friendly)</div>
+
+      <div class="phone">
+        <div class="screen">
+          <!-- camera -->
+          <div class="cam-t1">
+            <div class="room-detail"></div>
+            <div class="room-detail r2"></div>
+          </div>
+
+          <!-- monster -->
+          <div class="floor-shadow"></div>
+          <div class="monster-friendly">
+            <div class="blob-antenna"></div>
+            <div class="blob-body">
+              <div class="eye l"><div class="pupil"></div></div>
+              <div class="eye r"><div class="pupil"></div></div>
+              <div class="blob-cheek l"></div>
+              <div class="blob-cheek r"></div>
+              <div class="blob-smile"></div>
+            </div>
+            <div class="blob-foot l"></div>
+            <div class="blob-foot r"></div>
+          </div>
+
+          <!-- notch -->
+          <div class="notch"></div>
+
+          <!-- chrome -->
+          <div class="chrome back-btn"><div class="chev"></div></div>
+          <div class="chrome credit-pill"><span class="hex"></span>14</div>
+
+          <!-- charge item badges -->
+          <div class="chrome charges">
+            <div class="charge-badge">
+              <span class="charge-icon stab"><span class="glyph">⬆</span></span>
+              <span>Stability<br>Boost</span>
+              <span class="charge-count">×2</span>
+            </div>
+            <div class="charge-badge">
+              <span class="charge-icon nv"><span class="glyph">◐</span></span>
+              <span>Nightveil<br>Filter</span>
+              <span class="charge-count">×1</span>
+            </div>
+          </div>
+
+          <!-- action bar -->
+          <div class="chrome action-bar">
+            <div class="act-btn scan"><span class="ic ic-scan"></span>SCAN</div>
+            <div class="act-btn capture"><span class="ic ic-capture"></span>CAPTURE</div>
+            <div class="act-btn slay">
+              <span class="ic ic-slay">
+                <span class="sword a"></span>
+                <span class="sword b"></span>
+                <span class="skull"></span>
+              </span>SLAY
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="caption">
+        <span class="k">T1 ambiance:</span> full bright, friendly. Action bar visible (monster has settled).
+      </div>
+    </div>
+
+    <!-- ============================ PHONE 2 — T3-T4 DREAD ============================ -->
+    <div class="phone-col">
+      <div class="phone-label tier-dread">RARE/EPIC ENCOUNTER (T3-T4 — dread)</div>
+
+      <div class="phone">
+        <div class="screen">
+          <!-- camera dimmed + cooled -->
+          <div class="cam-dread">
+            <div class="room-detail"></div>
+            <div class="room-detail r2"></div>
+            <div class="tint"></div>
+          </div>
+
+          <!-- monster -->
+          <div class="floor-shadow dread"></div>
+          <div class="monster-dread">
+            <div class="antler l"></div>
+            <div class="antler r"></div>
+            <div class="silhouette">
+              <div class="glow-eye l"></div>
+              <div class="glow-eye r"></div>
+              <div class="glow-eye small l"></div>
+              <div class="glow-eye small r"></div>
+            </div>
+            <div class="claw l"></div>
+            <div class="claw r"></div>
+          </div>
+
+          <!-- vignette closing in -->
+          <div class="vignette"></div>
+
+          <!-- notch -->
+          <div class="notch"></div>
+
+          <!-- chrome (identical) -->
+          <div class="chrome back-btn"><div class="chev"></div></div>
+          <div class="chrome credit-pill low"><span class="hex"></span>3</div>
+
+          <!-- charge item badges -->
+          <div class="chrome charges">
+            <div class="charge-badge">
+              <span class="charge-icon stab"><span class="glyph">⬆</span></span>
+              <span>Stability<br>Boost</span>
+              <span class="charge-count">×2</span>
+            </div>
+            <div class="charge-badge">
+              <span class="charge-icon nv"><span class="glyph">◐</span></span>
+              <span>Nightveil<br>Filter</span>
+              <span class="charge-count">×1</span>
+            </div>
+          </div>
+
+          <!-- action bar (same chrome, slay glows hotter) -->
+          <div class="chrome action-bar">
+            <div class="act-btn scan"><span class="ic ic-scan"></span>SCAN</div>
+            <div class="act-btn capture"><span class="ic ic-capture"></span>CAPTURE</div>
+            <div class="act-btn slay hot">
+              <span class="ic ic-slay">
+                <span class="sword a"></span>
+                <span class="sword b"></span>
+                <span class="skull"></span>
+              </span>SLAY
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="caption dread">
+        <span class="k">T3-T4 ambiance:</span> lights dimmed, vignette closes, tint cools toward the tier color. Same chrome, diffused dread — NOT a rarity bar.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    Identical chunky cartoon chrome in both frames. Only the camera ambiance / mood escalates with the lured monster's rarity tier (the "diffused dread scale").
+  </div>
+
+</body>
+</html>

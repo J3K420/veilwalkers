@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veilwalkers — Surfaces Mock</title>
+<style>
+  :root{
+    --bg:#2E1A47; --card:#3D2461; --teal:#2BD9C4; --orange:#FF7A1A;
+    --text:#FFF6E9; --red:#FF2E4D; --gold:#FFC73A; --ink:#000;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:40px 24px;
+    background:var(--bg);
+    background-image:radial-gradient(circle at 20% 10%, rgba(43,217,196,.10), transparent 40%),
+                     radial-gradient(circle at 85% 80%, rgba(255,122,26,.12), transparent 45%);
+    font-family:'Arial Black', Impact, sans-serif;
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  .page-title{
+    text-align:center; margin:0 0 32px;
+    font-size:30px; letter-spacing:1px; color:var(--text);
+    text-shadow:3px 3px 0 #000;
+  }
+  .row{
+    display:flex; flex-wrap:wrap; gap:42px;
+    justify-content:center; align-items:flex-start;
+  }
+  .frame-wrap{ display:flex; flex-direction:column; align-items:center; }
+  .screen-label{
+    font-size:14px; letter-spacing:.5px; margin-bottom:12px;
+    background:var(--gold); color:#000;
+    border:4px solid #000; border-radius:14px;
+    padding:7px 14px; box-shadow:5px 5px 0 #000;
+    text-align:center; max-width:300px;
+  }
+  /* chunky phone frame */
+  .phone{
+    width:300px; height:620px;
+    background:#1c0f2e;
+    border:6px solid #000; border-radius:40px;
+    box-shadow:8px 8px 0 #000;
+    padding:14px;
+    position:relative; overflow:hidden;
+  }
+  .notch{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:96px; height:16px; background:#000; border-radius:0 0 14px 14px; z-index:30;
+  }
+  .scr{
+    width:100%; height:100%;
+    border-radius:28px; overflow:hidden;
+    background:var(--bg);
+    position:relative;
+    padding:22px 18px;
+    display:flex; flex-direction:column;
+  }
+  /* shared chunky bits */
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--gold); color:#000;
+    border:4px solid #000; border-radius:30px;
+    padding:6px 14px; font-size:16px;
+    box-shadow:4px 4px 0 #000;
+  }
+  .btn{
+    display:block; width:100%; text-align:center;
+    border:5px solid #000; border-radius:22px;
+    padding:16px 10px; font-size:20px; color:#000;
+    box-shadow:6px 6px 0 #000; cursor:pointer;
+    text-decoration:none; letter-spacing:.5px;
+  }
+  .btn-orange{ background:var(--orange); color:#fff; }
+  .btn-teal{ background:var(--teal); }
+  .btn-gold{ background:var(--gold); }
+  .card{
+    background:var(--card);
+    border:5px solid #000; border-radius:24px;
+    box-shadow:6px 6px 0 #000;
+    padding:16px;
+  }
+  .wordmark{
+    font-size:34px; letter-spacing:1px; line-height:.95;
+    color:var(--text); text-shadow:4px 4px 0 #000, 0 0 0 #000;
+    -webkit-text-stroke:1.5px #000;
+  }
+  .wordmark .v1{color:var(--teal);}
+  .wordmark .v2{color:var(--orange);}
+
+  /* ---------- SCREEN 1 ONBOARDING ---------- */
+  .s1{ justify-content:flex-start; gap:14px; text-align:center;}
+  .s1 .premise{ font-size:13px; font-family:'Trebuchet MS',sans-serif; font-weight:bold;
+    color:var(--text); line-height:1.4; padding:0 4px;}
+  .cam-card{ text-align:center; }
+  .cam-ico{
+    width:60px; height:46px; margin:0 auto 10px;
+    background:var(--teal); border:5px solid #000; border-radius:12px;
+    position:relative; box-shadow:4px 4px 0 #000;
+  }
+  .cam-ico:before{
+    content:""; position:absolute; top:-12px; left:18px;
+    width:24px; height:14px; background:var(--teal);
+    border:5px solid #000; border-bottom:none; border-radius:8px 8px 0 0;
+  }
+  .cam-ico:after{
+    content:""; position:absolute; top:9px; left:50%; transform:translateX(-50%);
+    width:20px; height:20px; background:var(--bg);
+    border:4px solid #000; border-radius:50%;
+  }
+  .cam-h{ font-size:20px; -webkit-text-stroke:.5px #000; margin:4px 0 8px;}
+  .cam-b{ font-size:12px; font-family:'Trebuchet MS',sans-serif; font-weight:bold;
+    line-height:1.45; color:var(--text); margin-bottom:6px;}
+  .free-note{
+    margin-top:auto; font-size:12.5px; font-family:'Trebuchet MS',sans-serif; font-weight:bold;
+    background:rgba(255,199,58,.16); border:3px dashed var(--gold);
+    border-radius:16px; padding:9px; color:var(--gold);
+  }
+  .coin{
+    display:inline-block; width:18px; height:18px; vertical-align:-3px;
+    background:var(--gold); border:3px solid #000; border-radius:50%;
+    box-shadow:2px 2px 0 #000; position:relative;
+  }
+
+  /* ---------- SCREEN 2 HOME ---------- */
+  .topbar{ display:flex; justify-content:flex-end; align-items:center; margin-bottom:6px;}
+  .home-center{ text-align:center; }
+  .monster{
+    width:96px; height:88px; margin:6px auto 4px; position:relative;
+  }
+  .blob{
+    width:96px; height:80px; background:var(--teal);
+    border:5px solid #000; border-radius:50% 50% 46% 46%;
+    position:relative; box-shadow:5px 5px 0 #000;
+  }
+  .eye{ position:absolute; top:20px; width:24px; height:24px; background:#fff;
+    border:4px solid #000; border-radius:50%; }
+  .eye.l{ left:16px;} .eye.r{ right:16px;}
+  .eye:after{ content:""; position:absolute; top:6px; left:6px; width:9px; height:9px;
+    background:#000; border-radius:50%;}
+  .smile{ position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    width:34px; height:16px; border:4px solid #000; border-top:none;
+    border-radius:0 0 30px 30px;}
+  .arm{ position:absolute; top:16px; right:-14px; width:26px; height:12px;
+    background:var(--teal); border:4px solid #000; border-radius:8px;
+    transform:rotate(-35deg); transform-origin:left center;}
+  .daily{
+    margin-top:14px; text-align:center; font-size:12px;
+    font-family:'Trebuchet MS',sans-serif; font-weight:bold;
+    background:var(--card); border:4px solid #000; border-radius:18px;
+    padding:9px; box-shadow:4px 4px 0 #000; color:var(--gold);
+  }
+  .home-cta{ margin-top:10px; font-size:24px; transform:rotate(-1.5deg); }
+  .home-sub{ display:flex; gap:12px; margin-top:18px; }
+  .home-sub .btn{ font-size:14px; padding:13px 4px; box-shadow:5px 5px 0 #000;}
+
+  /* ---------- SCREEN 3 AR SAFETY ---------- */
+  .s3{ padding:0; }
+  .cam-feed{
+    position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,.03) 0 8px, transparent 8px 16px),
+      linear-gradient(160deg,#241338,#15091f);
+  }
+  .dim{ position:absolute; inset:0; background:rgba(8,3,16,.78); }
+  .s3-inner{
+    position:relative; z-index:5; height:100%;
+    padding:26px 18px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center;
+  }
+  .warn-tri{
+    width:0; height:0; margin:0 auto 14px;
+    border-left:34px solid transparent; border-right:34px solid transparent;
+    border-bottom:58px solid var(--orange);
+    position:relative; filter:drop-shadow(5px 5px 0 #000);
+  }
+  .warn-tri:before{ /* black outline triangle */
+    content:""; position:absolute; top:6px; left:-40px;
+    border-left:40px solid transparent; border-right:40px solid transparent;
+    border-bottom:68px solid #000; z-index:-1;
+  }
+  .warn-tri:after{ content:"!"; position:absolute; top:18px; left:-7px;
+    font-size:30px; color:#000; }
+  .s3-h{ font-size:25px; -webkit-text-stroke:1px #000; line-height:1.05; margin-bottom:14px;}
+  .safe-card{ width:100%; text-align:left; }
+  .safe-card ul{ margin:0; padding:0; list-style:none;
+    font-family:'Trebuchet MS',sans-serif; font-weight:bold; font-size:13.5px; line-height:1.7;}
+  .safe-card li{ margin-bottom:4px;}
+  .flavor{ font-size:12px; font-style:italic; font-family:'Trebuchet MS',sans-serif;
+    font-weight:bold; color:var(--gold); margin:14px 4px 18px; line-height:1.4;}
+  .s3 .btn{ font-size:16px; }
+
+  /* ---------- SCREEN 4 SHOP ---------- */
+  .shop-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .shop-title{ font-size:30px; -webkit-text-stroke:1px #000;}
+  .pill.low{ background:var(--red); color:#fff;}
+  .pack{ position:relative; margin-bottom:14px; }
+  .pack .pname{ font-size:17px; -webkit-text-stroke:.4px #000; margin-bottom:4px;}
+  .pack .amt{ font-size:14px; font-family:'Trebuchet MS',sans-serif; font-weight:bold; margin-bottom:10px;}
+  .bonus{ color:var(--orange); }
+  .rare{ color:var(--teal); display:block; margin-top:3px; font-size:12.5px;}
+  .pack .btn{ padding:11px; font-size:17px; box-shadow:5px 5px 0 #000;}
+  .badge{
+    position:absolute; top:-12px; right:-8px;
+    background:var(--red); color:#fff; font-size:11px;
+    border:4px solid #000; border-radius:12px; padding:4px 9px;
+    box-shadow:3px 3px 0 #000; transform:rotate(9deg); z-index:6;
+  }
+  .badge.best{ background:var(--teal); color:#000; transform:rotate(-8deg);}
+  .pack.veil{ border-width:6px; box-shadow:7px 7px 0 #000;
+    background:linear-gradient(160deg,#4a2c76,#3D2461); }
+  .hexico{ display:inline-block; color:var(--gold); -webkit-text-stroke:.5px #000;}
+  .shop-foot{ margin-top:auto; text-align:center; font-size:11px;
+    font-family:'Trebuchet MS',sans-serif; font-weight:bold; color:rgba(255,246,233,.6); }
+</style>
+</head>
+<body>
+  <h1 class="page-title">VEILWALKERS — Surface Mocks · Pumpkin Patch</h1>
+  <div class="row">
+
+    <!-- ===== SCREEN 1 ===== -->
+    <div class="frame-wrap">
+      <div class="screen-label">ONBOARDING (Camera Disclosure)</div>
+      <div class="phone"><div class="notch"></div>
+        <div class="scr s1">
+          <div class="wordmark"><span class="v1">VEIL</span><span class="v2">WALKERS</span></div>
+          <div class="premise">The Veil is thin tonight. Monsters are real — and only you can see them.</div>
+          <div class="card cam-card">
+            <div class="cam-ico"></div>
+            <div class="cam-h">We need your camera</div>
+            <div class="cam-b">Veilwalkers uses your camera to reveal monsters hiding in your real surroundings. We never record or store what you see.</div>
+            <a class="btn btn-orange" style="margin-top:8px;">ALLOW CAMERA</a>
+          </div>
+          <div class="free-note">You'll get 20 free Credits to start! <span class="coin"></span>✨</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SCREEN 2 ===== -->
+    <div class="frame-wrap">
+      <div class="screen-label">HOME (Hub)</div>
+      <div class="phone"><div class="notch"></div>
+        <div class="scr">
+          <div class="topbar"><span class="pill"><span class="hexico">⬡</span> 20</span></div>
+          <div class="home-center">
+            <div class="wordmark" style="transform:rotate(-3deg); font-size:30px;"><span class="v1">VEIL</span><span class="v2">WALKERS</span></div>
+            <div class="monster">
+              <div class="blob">
+                <div class="eye l"></div><div class="eye r"></div>
+                <div class="smile"></div><div class="arm"></div>
+              </div>
+            </div>
+          </div>
+          <a class="btn btn-orange home-cta">ENTER AR HUNT</a>
+          <div class="home-sub">
+            <a class="btn btn-teal">CODEX<br>12/67</a>
+            <a class="btn btn-gold">SHOP</a>
+          </div>
+          <div class="daily">Claim your daily offering 🎁</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SCREEN 3 ===== -->
+    <div class="frame-wrap">
+      <div class="screen-label">AR SAFETY WARNING (mandatory)</div>
+      <div class="phone"><div class="notch"></div>
+        <div class="scr s3">
+          <div class="cam-feed"></div><div class="dim"></div>
+          <div class="s3-inner">
+            <div class="warn-tri"></div>
+            <div class="s3-h">MIND THE<br>REAL WORLD</div>
+            <div class="card safe-card">
+              <ul>
+                <li>• Stay aware of your surroundings</li>
+                <li>• Watch your step — don't walk into things</li>
+                <li>• Younger hunters: get a grown-up's OK</li>
+              </ul>
+            </div>
+            <div class="flavor">"The Veil pulls your attention. Keep one eye on the real world."</div>
+            <a class="btn btn-teal">I'M AWARE — PART THE VEIL</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SCREEN 4 ===== -->
+    <div class="frame-wrap">
+      <div class="screen-label">SHOP (Credit Packs)</div>
+      <div class="phone"><div class="notch"></div>
+        <div class="scr">
+          <div class="shop-top">
+            <div class="shop-title">SHOP</div>
+            <span class="pill low"><span class="hexico" style="color:#fff;">⬡</span> 5</span>
+          </div>
+
+          <div class="card pack">
+            <div class="pname">STARTER PACK</div>
+            <div class="amt"><span class="hexico">⬡</span> 50 Credits</div>
+            <a class="btn btn-teal">$1.99</a>
+          </div>
+
+          <div class="card pack">
+            <div class="badge">POPULAR!</div>
+            <div class="pname">HUNTER PACK</div>
+            <div class="amt"><span class="hexico">⬡</span> 150 <span class="bonus">+ 20 BONUS</span></div>
+            <a class="btn btn-orange">$4.99</a>
+          </div>
+
+          <div class="card pack veil">
+            <div class="badge best">BEST VALUE</div>
+            <div class="pname">VEIL PACK</div>
+            <div class="amt"><span class="hexico">⬡</span> 400 <span class="bonus">+ 100 BONUS</span>
+              <span class="rare">★ GUARANTEED RARE LURE</span></div>
+            <a class="btn btn-gold">$9.99</a>
+          </div>
+
+          <div class="shop-foot">Secure payment via Google Play</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

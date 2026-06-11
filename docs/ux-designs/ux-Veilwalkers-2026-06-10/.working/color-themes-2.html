@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veilwalkers — Cartoon Network Color Themes (Round 2)</title>
+<style>
+/* =========================================================================
+   VEILWALKERS — COLOR THEME EXPLORATION, ROUND 2
+   Direction: "Spooky Saturday" pushed HARD into SATURDAY-MORNING
+   CARTOON NETWORK territory. (Gravity Falls title cards, Amazing World
+   of Gumball UI, classic CN bumpers.)
+
+   GLOBAL CARTOON-NETWORK EXECUTION RULES (apply to all 3 variations):
+     - Thick black outlines: 4px solid #000 on every shape/button/card.
+     - Fat chunky rounded shapes; oversized chunky buttons.
+     - HARD offset shadows: box-shadow: 6px 6px 0 #000 (no blur).
+     - Punchy saturated candy colors; vivid-poster energy.
+     - Sticker feel; playful rotations on cards/badges.
+     - Outlined wobbly "Veilwalkers" wordmark (Impact / Arial Black).
+
+   VARIATION PALETTES (hex documented per-variation below):
+
+   ---- 1. PUMPKIN PATCH (warmest / Halloween-fun) ----
+     background      #2E1A47  (purple night)
+     surface/card    #3D2461  (lighter grape panel)
+     primary-accent  #2BD9C4  (candy teal)
+     secondary-accent#FF7A1A  (bold pumpkin orange)
+     text-primary    #FFF6E9  (warm cream)
+     text-muted      #B79FD4  (dusty lavender)
+     success         #57E07A  (bright vine green)
+     danger / SLAY   #FF2E4D  (bold slay red)
+     credit-gold     #FFC73A  (candy gold)
+
+   ---- 2. SLIME TIME (goopy gross-fun monster slime) ----
+     background      #241046  (deep grape/indigo)
+     surface/card    #33175E  (indigo panel)
+     primary-accent  #9CFF2E  (electric lime green)
+     secondary-accent#2BD9C4  (candy teal)
+     text-primary    #F2FFE0  (acid cream)
+     text-muted      #A98FD6  (muted violet)
+     success         #6BFF3D  (toxic green)
+     danger / SLAY   #FF2E4D  (bold slay red)
+     credit-gold     #FFD23A  (slime gold)
+
+   ---- 3. BUBBLEGUM SPOOK (brightest / poppy) ----
+     background      #3A1755  (plum)
+     surface/card    #4D2070  (lighter plum panel)
+     primary-accent  #FF3FA4  (hot pink / magenta)
+     secondary-accent#2BD9C4  (candy teal)
+     text-primary    #FFF2FB  (pink cream)
+     text-muted      #CBA3E0  (lilac)
+     success         #5CE085  (mint pop)
+     danger / SLAY   #FF2E4D  (bold slay red)
+     credit-gold     #FFE03A  (yellow pop)
+
+   DREAD SCALE (reference key only — NOT a UI element). Stays moody/
+   escalating even though chrome is bright. Teen-safe, no gore-red:
+     T1 Common    #7DE0C4 (playful bright)
+     T2 Uncommon  #4FA8C9 (eerie)
+     T3 Rare      #6A5AC9 (unsettling)
+     T4 Epic      #4B2E6B (dread)
+     T5 Nightmare #3A4C3A -> bruise #5C2A4A (sickly bruise/rot, terrifying)
+   ========================================================================= */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 20% 15%, #3a2a5c 0, transparent 45%),
+    radial-gradient(circle at 85% 80%, #2a1840 0, transparent 50%),
+    #1c1130;
+  color: #fff;
+  padding: 28px 20px 60px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- page header ---- */
+.page-head {
+  text-align: center;
+  margin: 0 auto 34px;
+  max-width: 1240px;
+}
+.page-kicker {
+  display: inline-block;
+  background: #FFC73A;
+  color: #1c1130;
+  border: 4px solid #000;
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  box-shadow: 5px 5px 0 #000;
+  transform: rotate(-2deg);
+}
+.page-title {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 46px;
+  margin: 18px 0 6px;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  -webkit-text-stroke: 3px #000;
+  paint-order: stroke fill;
+  text-shadow: 5px 5px 0 #000;
+}
+.page-sub {
+  color: #cbb7e8;
+  font-size: 15px;
+  max-width: 720px;
+  margin: 4px auto 0;
+  line-height: 1.5;
+}
+
+/* ---- 3-up grid ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 26px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+@media (max-width: 1100px){ .grid{ grid-template-columns: 1fr; max-width:520px; } }
+
+/* ---- variation card shell ---- */
+.theme {
+  border: 5px solid #000;
+  border-radius: 26px;
+  padding: 18px 18px 22px;
+  box-shadow: 9px 9px 0 #000;
+  position: relative;
+}
+.theme-name {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  display: inline-block;
+  border: 4px solid #000;
+  border-radius: 14px;
+  padding: 6px 14px;
+  box-shadow: 5px 5px 0 #000;
+  transform: rotate(-1.5deg);
+  margin-bottom: 4px;
+}
+.theme-tag {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 12px 2px 6px;
+  opacity: .92;
+}
+.section-label {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 14px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  border: 3px solid #000;
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: inline-block;
+  box-shadow: 4px 4px 0 #000;
+  margin: 16px 0 12px;
+}
+
+/* ---- token chips ---- */
+.tokens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 3px solid #000;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #fff;
+  box-shadow: 3px 3px 0 #000;
+}
+.sw {
+  width: 26px; height: 26px;
+  border: 3px solid #000;
+  border-radius: 7px;
+  flex: 0 0 auto;
+}
+.chip-meta { line-height: 1.1; min-width: 0; }
+.chip-name { font-size: 10px; font-weight: 800; color: #1c1130; text-transform: uppercase; letter-spacing: .3px; }
+.chip-hex { font-size: 11px; font-weight: 900; color: #000; font-family: 'Consolas', monospace; }
+
+/* ---- mock home screen ---- */
+.mock {
+  border: 4px solid #000;
+  border-radius: 20px;
+  padding: 16px 14px 18px;
+  box-shadow: inset 0 0 0 3px rgba(0,0,0,.12), 6px 6px 0 #000;
+  position: relative;
+  overflow: hidden;
+}
+.mock-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.wordmark {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 27px;
+  text-transform: uppercase;
+  letter-spacing: -.5px;
+  line-height: .9;
+  -webkit-text-stroke: 3px #000;
+  paint-order: stroke fill;
+  text-shadow: 4px 4px 0 #000;
+  transform: rotate(-3deg);
+}
+.credit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 4px solid #000;
+  border-radius: 999px;
+  padding: 5px 13px 5px 10px;
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 17px;
+  box-shadow: 4px 4px 0 #000;
+  transform: rotate(2deg);
+}
+.credit-pill .hex { font-size: 18px; line-height: 1; }
+
+/* monster sticker (pure CSS silhouette) */
+.monster {
+  width: 92px; height: 92px;
+  margin: 6px auto 14px;
+  position: relative;
+}
+.monster .body {
+  position: absolute; inset: 0;
+  border: 4px solid #000;
+  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+  box-shadow: 5px 5px 0 #000;
+}
+.monster .eye {
+  position: absolute;
+  width: 22px; height: 26px;
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 50%;
+  top: 26px;
+}
+.monster .eye.l { left: 16px; }
+.monster .eye.r { right: 16px; }
+.monster .eye::after {
+  content:''; position:absolute;
+  width: 8px; height: 8px; background:#000; border-radius:50%;
+  top: 8px; left: 5px;
+}
+.monster .horn {
+  position: absolute; top: -10px; width: 0; height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 18px solid #000;
+}
+.monster .horn.l { left: 18px; transform: rotate(-18deg); }
+.monster .horn.r { right: 18px; transform: rotate(18deg); }
+
+.mock-caption {
+  text-align: center;
+  font-weight: 800;
+  font-size: 12px;
+  margin: -6px 0 14px;
+  opacity: .9;
+}
+
+.btn-ar {
+  display: block;
+  width: 100%;
+  border: 5px solid #000;
+  border-radius: 18px;
+  padding: 16px 12px;
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 21px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  text-align: center;
+  box-shadow: 7px 7px 0 #000;
+  cursor: pointer;
+  -webkit-text-stroke: .5px #000;
+}
+.btn-row {
+  display: flex; gap: 10px; margin-top: 12px;
+}
+.btn-mini {
+  flex: 1;
+  border: 4px solid #000;
+  border-radius: 14px;
+  padding: 10px 6px;
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  text-align: center;
+  box-shadow: 5px 5px 0 #000;
+}
+
+/* ---- dread scale reference key ---- */
+.dread-key {
+  border: 4px dashed #000;
+  border-radius: 18px;
+  padding: 14px 12px 16px;
+  background: rgba(255,255,255,.06);
+}
+.dread-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.ref-badge {
+  font-family: 'Arial Black', Impact, sans-serif;
+  font-size: 11px;
+  background: #fff; color: #000;
+  border: 3px solid #000; border-radius: 7px;
+  padding: 3px 8px;
+  box-shadow: 3px 3px 0 #000;
+  text-transform: uppercase;
+}
+.dread-title { font-family:'Arial Black',Impact,sans-serif; font-size:15px; text-transform:uppercase; color:#fff; }
+.dread-note {
+  font-size: 11px;
+  color: #d6c6f0;
+  line-height: 1.45;
+  margin: 6px 2px 12px;
+}
+.dread-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 7px;
+}
+.dread {
+  border: 3px solid #000;
+  border-radius: 11px;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 #000;
+  background: #fff;
+}
+.dread .cap {
+  height: 56px;
+  border-bottom: 3px solid #000;
+  position: relative;
+}
+.dread .tier {
+  position: absolute; top: 4px; left: 4px;
+  font-family:'Arial Black',Impact,sans-serif;
+  font-size: 10px;
+  background:#000; color:#fff;
+  padding: 1px 5px; border-radius: 5px;
+}
+.dread .lab {
+  font-size: 9.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #000;
+  padding: 4px 4px 2px;
+  text-align: center;
+  letter-spacing: .2px;
+}
+.dread .mood {
+  font-size: 9px;
+  color: #333;
+  padding: 0 3px 6px;
+  text-align: center;
+  line-height: 1.25;
+  min-height: 30px;
+}
+
+.footer-note {
+  text-align:center; color:#9a86bd; font-size:12px;
+  margin-top: 34px;
+}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <span class="page-kicker">Veilwalkers · Color Round 2</span>
+  <h1 class="page-title">Saturday-Morning Cartoon Mode</h1>
+  <p class="page-sub">"Spooky Saturday" cranked all the way into Cartoon Network territory — thick black outlines, chunky stickers, hard offset shadows, candy-poster color. Gravity Falls title-card energy meets Gumball UI. Three color moods, same bold execution.</p>
+</header>
+
+<div class="grid">
+
+  <!-- ====================================================== -->
+  <!-- VARIATION 1 — PUMPKIN PATCH                            -->
+  <!-- bg #2E1A47 · teal #2BD9C4 · pumpkin #FF7A1A            -->
+  <!-- ====================================================== -->
+  <section class="theme" style="background:#2E1A47;">
+    <div class="theme-name" style="background:#FF7A1A; color:#2E1A47;">🎃 Pumpkin Patch</div>
+    <div class="theme-tag" style="color:#FFD9B0;">Warmest mood · candy-teal primary, BOLD pumpkin-orange secondary — most Halloween-fun.</div>
+
+    <!-- PART 1: tokens -->
+    <div class="section-label" style="background:#2BD9C4; color:#08312c;">Part 1 · Cartoon UI Chrome</div>
+    <div class="tokens">
+      <div class="chip"><span class="sw" style="background:#2E1A47;"></span><span class="chip-meta"><span class="chip-name">Background</span><span class="chip-hex">#2E1A47</span></span></div>
+      <div class="chip"><span class="sw" style="background:#3D2461;"></span><span class="chip-meta"><span class="chip-name">Surface/Card</span><span class="chip-hex">#3D2461</span></span></div>
+      <div class="chip"><span class="sw" style="background:#2BD9C4;"></span><span class="chip-meta"><span class="chip-name">Primary</span><span class="chip-hex">#2BD9C4</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FF7A1A;"></span><span class="chip-meta"><span class="chip-name">Secondary</span><span class="chip-hex">#FF7A1A</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FFF6E9;"></span><span class="chip-meta"><span class="chip-name">Text Primary</span><span class="chip-hex">#FFF6E9</span></span></div>
+      <div class="chip"><span class="sw" style="background:#B79FD4;"></span><span class="chip-meta"><span class="chip-name">Text Muted</span><span class="chip-hex">#B79FD4</span></span></div>
+      <div class="chip"><span class="sw" style="background:#57E07A;"></span><span class="chip-meta"><span class="chip-name">Success</span><span class="chip-hex">#57E07A</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FF2E4D;"></span><span class="chip-meta"><span class="chip-name">Danger · SLAY</span><span class="chip-hex">#FF2E4D</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FFC73A;"></span><span class="chip-meta"><span class="chip-name">Credit Gold</span><span class="chip-hex">#FFC73A</span></span></div>
+    </div>
+
+    <!-- PART 1: mock -->
+    <div class="mock" style="background:#3D2461;">
+      <div class="mock-topbar">
+        <div class="wordmark" style="color:#2BD9C4;">Veil<span style="color:#FF7A1A;">walkers</span></div>
+        <div class="credit-pill" style="background:#FFC73A; color:#2E1A47;"><span class="hex">⬡</span> 20</div>
+      </div>
+      <div class="monster">
+        <span class="horn l" style="border-bottom-color:#FF7A1A;"></span>
+        <span class="horn r" style="border-bottom-color:#FF7A1A;"></span>
+        <span class="body" style="background:#2BD9C4;"></span>
+        <span class="eye l"></span><span class="eye r"></span>
+      </div>
+      <div class="mock-caption" style="color:#FFF6E9;">3 monsters lurking nearby · Codex 12/67</div>
+      <button class="btn-ar" style="background:#FF7A1A; color:#fff; text-shadow:2px 2px 0 #000;">🔮 Enter AR Hunt</button>
+      <div class="btn-row">
+        <div class="btn-mini" style="background:#2BD9C4; color:#08312c;">Codex</div>
+        <div class="btn-mini" style="background:#FFC73A; color:#2E1A47;">Shop</div>
+        <div class="btn-mini" style="background:#FF2E4D; color:#fff;">The Pit</div>
+      </div>
+    </div>
+
+    <!-- PART 2: dread key -->
+    <div class="section-label" style="background:#FF7A1A; color:#2E1A47;">Part 2 · Dread Scale</div>
+    <div class="dread-key">
+      <div class="dread-head"><span class="ref-badge">Reference Key</span><span class="dread-title">Encounter Mood ↑ by Rarity</span></div>
+      <p class="dread-note">Design reference for how encounter mood escalates by monster rarity — players never see this as a bar; it's diffused into AR tint, lighting, vignette &amp; SLAY-glow during the encounter.</p>
+      <div class="dread-row">
+        <div class="dread"><div class="cap" style="background:#7DE0C4;"><span class="tier">T1</span></div><div class="lab">Common</div><div class="mood">Playful, bright, friendly</div></div>
+        <div class="dread"><div class="cap" style="background:#4FA8C9;"><span class="tier">T2</span></div><div class="lab">Uncommon</div><div class="mood">Eerie, cooling air</div></div>
+        <div class="dread"><div class="cap" style="background:#6A5AC9;"><span class="tier">T3</span></div><div class="lab">Rare</div><div class="mood">Unsettling, off-kilter</div></div>
+        <div class="dread"><div class="cap" style="background:#4B2E6B;"><span class="tier">T4</span></div><div class="lab">Epic</div><div class="mood">Heavy dread, closing in</div></div>
+        <div class="dread"><div class="cap" style="background:linear-gradient(160deg,#3A4C3A,#5C2A4A);"><span class="tier">T5</span></div><div class="lab">Nightmare</div><div class="mood">Sickly bruise-rot, terrifying</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!-- VARIATION 2 — SLIME TIME                               -->
+  <!-- bg #241046 · lime #9CFF2E · teal #2BD9C4               -->
+  <!-- ====================================================== -->
+  <section class="theme" style="background:#241046;">
+    <div class="theme-name" style="background:#9CFF2E; color:#1a0a38;">🟢 Slime Time</div>
+    <div class="theme-tag" style="color:#D7FFB0;">Goopy gross-fun · electric lime-green + candy-teal — monster-slime energy.</div>
+
+    <div class="section-label" style="background:#9CFF2E; color:#1a3500;">Part 1 · Cartoon UI Chrome</div>
+    <div class="tokens">
+      <div class="chip"><span class="sw" style="background:#241046;"></span><span class="chip-meta"><span class="chip-name">Background</span><span class="chip-hex">#241046</span></span></div>
+      <div class="chip"><span class="sw" style="background:#33175E;"></span><span class="chip-meta"><span class="chip-name">Surface/Card</span><span class="chip-hex">#33175E</span></span></div>
+      <div class="chip"><span class="sw" style="background:#9CFF2E;"></span><span class="chip-meta"><span class="chip-name">Primary</span><span class="chip-hex">#9CFF2E</span></span></div>
+      <div class="chip"><span class="sw" style="background:#2BD9C4;"></span><span class="chip-meta"><span class="chip-name">Secondary</span><span class="chip-hex">#2BD9C4</span></span></div>
+      <div class="chip"><span class="sw" style="background:#F2FFE0;"></span><span class="chip-meta"><span class="chip-name">Text Primary</span><span class="chip-hex">#F2FFE0</span></span></div>
+      <div class="chip"><span class="sw" style="background:#A98FD6;"></span><span class="chip-meta"><span class="chip-name">Text Muted</span><span class="chip-hex">#A98FD6</span></span></div>
+      <div class="chip"><span class="sw" style="background:#6BFF3D;"></span><span class="chip-meta"><span class="chip-name">Success</span><span class="chip-hex">#6BFF3D</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FF2E4D;"></span><span class="chip-meta"><span class="chip-name">Danger · SLAY</span><span class="chip-hex">#FF2E4D</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FFD23A;"></span><span class="chip-meta"><span class="chip-name">Credit Gold</span><span class="chip-hex">#FFD23A</span></span></div>
+    </div>
+
+    <div class="mock" style="background:#33175E;">
+      <div class="mock-topbar">
+        <div class="wordmark" style="color:#9CFF2E;">Veil<span style="color:#2BD9C4;">walkers</span></div>
+        <div class="credit-pill" style="background:#FFD23A; color:#241046;"><span class="hex">⬡</span> 20</div>
+      </div>
+      <div class="monster">
+        <span class="horn l" style="border-bottom-color:#2BD9C4;"></span>
+        <span class="horn r" style="border-bottom-color:#2BD9C4;"></span>
+        <span class="body" style="background:#9CFF2E;"></span>
+        <span class="eye l"></span><span class="eye r"></span>
+      </div>
+      <div class="mock-caption" style="color:#F2FFE0;">3 monsters lurking nearby · Codex 12/67</div>
+      <button class="btn-ar" style="background:#9CFF2E; color:#1a3500; text-shadow:2px 2px 0 #000;">🔮 Enter AR Hunt</button>
+      <div class="btn-row">
+        <div class="btn-mini" style="background:#2BD9C4; color:#08312c;">Codex</div>
+        <div class="btn-mini" style="background:#FFD23A; color:#241046;">Shop</div>
+        <div class="btn-mini" style="background:#FF2E4D; color:#fff;">The Pit</div>
+      </div>
+    </div>
+
+    <div class="section-label" style="background:#2BD9C4; color:#08312c;">Part 2 · Dread Scale</div>
+    <div class="dread-key">
+      <div class="dread-head"><span class="ref-badge">Reference Key</span><span class="dread-title">Encounter Mood ↑ by Rarity</span></div>
+      <p class="dread-note">Design reference for how encounter mood escalates by monster rarity — players never see this as a bar; it's diffused into AR tint, lighting, vignette &amp; SLAY-glow during the encounter.</p>
+      <div class="dread-row">
+        <div class="dread"><div class="cap" style="background:#7DE0C4;"><span class="tier">T1</span></div><div class="lab">Common</div><div class="mood">Playful, bright, friendly</div></div>
+        <div class="dread"><div class="cap" style="background:#4FA8C9;"><span class="tier">T2</span></div><div class="lab">Uncommon</div><div class="mood">Eerie, cooling air</div></div>
+        <div class="dread"><div class="cap" style="background:#6A5AC9;"><span class="tier">T3</span></div><div class="lab">Rare</div><div class="mood">Unsettling, off-kilter</div></div>
+        <div class="dread"><div class="cap" style="background:#4B2E6B;"><span class="tier">T4</span></div><div class="lab">Epic</div><div class="mood">Heavy dread, closing in</div></div>
+        <div class="dread"><div class="cap" style="background:linear-gradient(160deg,#3A4C3A,#5C2A4A);"><span class="tier">T5</span></div><div class="lab">Nightmare</div><div class="mood">Sickly bruise-rot, terrifying</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================================================== -->
+  <!-- VARIATION 3 — BUBBLEGUM SPOOK                          -->
+  <!-- bg #3A1755 · pink #FF3FA4 · teal #2BD9C4 · yellow pop  -->
+  <!-- ====================================================== -->
+  <section class="theme" style="background:#3A1755;">
+    <div class="theme-name" style="background:#FF3FA4; color:#2a0d3f;">🍬 Bubblegum Spook</div>
+    <div class="theme-tag" style="color:#FFD3EE;">Brightest &amp; poppiest · hot-pink/magenta + candy-teal + yellow pops.</div>
+
+    <div class="section-label" style="background:#FF3FA4; color:#2a0d3f;">Part 1 · Cartoon UI Chrome</div>
+    <div class="tokens">
+      <div class="chip"><span class="sw" style="background:#3A1755;"></span><span class="chip-meta"><span class="chip-name">Background</span><span class="chip-hex">#3A1755</span></span></div>
+      <div class="chip"><span class="sw" style="background:#4D2070;"></span><span class="chip-meta"><span class="chip-name">Surface/Card</span><span class="chip-hex">#4D2070</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FF3FA4;"></span><span class="chip-meta"><span class="chip-name">Primary</span><span class="chip-hex">#FF3FA4</span></span></div>
+      <div class="chip"><span class="sw" style="background:#2BD9C4;"></span><span class="chip-meta"><span class="chip-name">Secondary</span><span class="chip-hex">#2BD9C4</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FFF2FB;"></span><span class="chip-meta"><span class="chip-name">Text Primary</span><span class="chip-hex">#FFF2FB</span></span></div>
+      <div class="chip"><span class="sw" style="background:#CBA3E0;"></span><span class="chip-meta"><span class="chip-name">Text Muted</span><span class="chip-hex">#CBA3E0</span></span></div>
+      <div class="chip"><span class="sw" style="background:#5CE085;"></span><span class="chip-meta"><span class="chip-name">Success</span><span class="chip-hex">#5CE085</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FF2E4D;"></span><span class="chip-meta"><span class="chip-name">Danger · SLAY</span><span class="chip-hex">#FF2E4D</span></span></div>
+      <div class="chip"><span class="sw" style="background:#FFE03A;"></span><span class="chip-meta"><span class="chip-name">Credit Gold</span><span class="chip-hex">#FFE03A</span></span></div>
+    </div>
+
+    <div class="mock" style="background:#4D2070;">
+      <div class="mock-topbar">
+        <div class="wordmark" style="color:#FF3FA4;">Veil<span style="color:#2BD9C4;">walkers</span></div>
+        <div class="credit-pill" style="background:#FFE03A; color:#3A1755;"><span class="hex">⬡</span> 20</div>
+      </div>
+      <div class="monster">
+        <span class="horn l" style="border-bottom-color:#FFE03A;"></span>
+        <span class="horn r" style="border-bottom-color:#FFE03A;"></span>
+        <span class="body" style="background:#FF3FA4;"></span>
+        <span class="eye l"></span><span class="eye r"></span>
+      </div>
+      <div class="mock-caption" style="color:#FFF2FB;">3 monsters lurking nearby · Codex 12/67</div>
+      <button class="btn-ar" style="background:#FF3FA4; color:#fff; text-shadow:2px 2px 0 #000;">🔮 Enter AR Hunt</button>
+      <div class="btn-row">
+        <div class="btn-mini" style="background:#2BD9C4; color:#08312c;">Codex</div>
+        <div class="btn-mini" style="background:#FFE03A; color:#3A1755;">Shop</div>
+        <div class="btn-mini" style="background:#FF2E4D; color:#fff;">The Pit</div>
+      </div>
+    </div>
+
+    <div class="section-label" style="background:#2BD9C4; color:#08312c;">Part 2 · Dread Scale</div>
+    <div class="dread-key">
+      <div class="dread-head"><span class="ref-badge">Reference Key</span><span class="dread-title">Encounter Mood ↑ by Rarity</span></div>
+      <p class="dread-note">Design reference for how encounter mood escalates by monster rarity — players never see this as a bar; it's diffused into AR tint, lighting, vignette &amp; SLAY-glow during the encounter.</p>
+      <div class="dread-row">
+        <div class="dread"><div class="cap" style="background:#7DE0C4;"><span class="tier">T1</span></div><div class="lab">Common</div><div class="mood">Playful, bright, friendly</div></div>
+        <div class="dread"><div class="cap" style="background:#4FA8C9;"><span class="tier">T2</span></div><div class="lab">Uncommon</div><div class="mood">Eerie, cooling air</div></div>
+        <div class="dread"><div class="cap" style="background:#6A5AC9;"><span class="tier">T3</span></div><div class="lab">Rare</div><div class="mood">Unsettling, off-kilter</div></div>
+        <div class="dread"><div class="cap" style="background:#4B2E6B;"><span class="tier">T4</span></div><div class="lab">Epic</div><div class="mood">Heavy dread, closing in</div></div>
+        <div class="dread"><div class="cap" style="background:linear-gradient(160deg,#3A4C3A,#5C2A4A);"><span class="tier">T5</span></div><div class="lab">Nightmare</div><div class="mood">Sickly bruise-rot, terrifying</div></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<p class="footer-note">Veilwalkers · UX color round 2 · Cartoon-Network execution · 2026-06-10</p>
+
+</body>
+</html>

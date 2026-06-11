@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veilwalkers — Codex Mock</title>
+<style>
+  :root{
+    --bg:#2E1A47;
+    --card:#3D2461;
+    --teal:#2BD9C4;
+    --orange:#FF7A1A;
+    --text:#FFF6E9;
+    --red:#FF2E4D;
+    --gold:#FFC73A;
+    --t1:#7DE0C4;
+    --t2:#4FA8C9;
+    --t3:#6A5AC9;
+    --t4:#4B2E6B;
+    --ink:#000;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    background-image:radial-gradient(circle at 20% 10%, rgba(255,122,26,.08), transparent 40%),
+                     radial-gradient(circle at 85% 80%, rgba(43,217,196,.08), transparent 45%);
+    font-family:'Trebuchet MS','Segoe UI',sans-serif;
+    color:var(--text);
+    padding:28px 20px 60px;
+  }
+  .chunky{font-family:'Arial Black','Arial Bold',Impact,sans-serif;}
+
+  /* ---------- page header / wordmark ---------- */
+  .wordmark{
+    text-align:center;
+    margin:0 auto 30px;
+    max-width:1200px;
+  }
+  .wordmark h1{
+    display:inline-block;
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:46px;
+    letter-spacing:2px;
+    margin:0;
+    padding:10px 26px;
+    color:var(--text);
+    background:var(--orange);
+    border:5px solid var(--ink);
+    border-radius:18px;
+    box-shadow:8px 8px 0 #000;
+    transform:rotate(-2deg);
+    text-transform:uppercase;
+    -webkit-text-stroke:1.5px #000;
+  }
+  .wordmark .sub{
+    margin-top:14px;
+    font-size:13px;
+    opacity:.8;
+    letter-spacing:1px;
+    text-transform:uppercase;
+  }
+
+  /* ---------- layout ---------- */
+  .stage{
+    display:flex;
+    flex-wrap:wrap;
+    gap:26px;
+    justify-content:center;
+    align-items:flex-start;
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .view{
+    background:var(--card);
+    border:5px solid var(--ink);
+    border-radius:24px;
+    box-shadow:8px 8px 0 #000;
+    padding:20px;
+    flex:1 1 560px;
+    min-width:340px;
+  }
+  .view-label{
+    display:inline-block;
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:14px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    background:var(--teal);
+    color:#06302b;
+    border:4px solid var(--ink);
+    border-radius:12px;
+    padding:5px 14px;
+    box-shadow:4px 4px 0 #000;
+    margin-bottom:18px;
+  }
+
+  /* ---------- codex header bar ---------- */
+  .codex-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:16px;
+  }
+  .codex-title{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:38px;
+    letter-spacing:2px;
+    -webkit-text-stroke:1.5px #000;
+    color:var(--text);
+    margin:0;
+  }
+  .progress-badge{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:26px;
+    color:#3a2a00;
+    background:var(--gold);
+    border:5px solid var(--ink);
+    border-radius:50px;
+    padding:8px 20px;
+    box-shadow:5px 5px 0 #000;
+    white-space:nowrap;
+  }
+  .progress-badge small{font-size:12px;display:block;letter-spacing:1px;font-family:'Trebuchet MS';}
+
+  /* ---------- legend ---------- */
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:18px;
+  }
+  .legend-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    font-weight:bold;
+    background:#2a1640;
+    border:3px solid var(--ink);
+    border-radius:12px;
+    padding:6px 10px;
+    box-shadow:3px 3px 0 #000;
+  }
+  .swatch{width:22px;height:22px;border:3px solid var(--ink);border-radius:6px;flex:0 0 auto;}
+  .sw-disc{background:var(--t1);}
+  .sw-sil{background:#1a0f29;position:relative;}
+  .sw-sil::after{content:"?";position:absolute;inset:0;color:#5a4a78;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;}
+  .sw-blank{background:#160d22;}
+
+  /* ---------- grid ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:12px;
+  }
+  .slot{
+    position:relative;
+    aspect-ratio:1/1;
+    border:4px solid var(--ink);
+    border-radius:16px;
+    box-shadow:4px 4px 0 #000;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    padding:6px;
+    overflow:hidden;
+  }
+  /* DISCOVERED */
+  .slot.disc{background:#4a2d75;}
+  .slot.disc .name{
+    font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;
+    background:#1c1030;border:2px solid #000;border-radius:8px;padding:2px 5px;
+    margin-top:auto;text-align:center;line-height:1.1;max-width:100%;
+  }
+  .tier-badge{
+    position:absolute;top:5px;left:5px;
+    font-size:9px;font-weight:900;color:#fff;
+    border:2px solid #000;border-radius:50px;
+    padding:1px 6px;letter-spacing:.5px;
+    box-shadow:2px 2px 0 #000;
+    z-index:3;
+  }
+  .b-t1{background:var(--t1);color:#06302b;}
+  .b-t2{background:var(--t2);color:#03222e;}
+  .b-t3{background:var(--t3);color:#fff;}
+  .b-t4{background:var(--t4);color:#fff;}
+  .b-t5{background:linear-gradient(135deg,#3A4C3A,#5C2A4A);color:#fff;}
+
+  /* monster blob area */
+  .blob-area{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+
+  /* abstract monster silhouettes (CSS shapes) */
+  .mon{position:relative;width:54%;height:54%;}
+  .mon .body{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);}
+  /* round blob */
+  .m-blob .body{width:100%;height:88%;border-radius:48% 48% 44% 44%/55% 55% 45% 45%;border:3px solid #000;}
+  .m-blob .eye{position:absolute;top:32%;width:16%;height:16%;background:#fff;border:2px solid #000;border-radius:50%;}
+  .m-blob .eye.l{left:28%;} .m-blob .eye.r{right:28%;}
+  /* tall creep */
+  .m-tall .body{width:64%;height:100%;border-radius:50% 50% 30% 30%/40% 40% 20% 20%;border:3px solid #000;}
+  .m-tall .eye{position:absolute;top:24%;width:14%;height:20%;background:#FFC73A;border:2px solid #000;border-radius:50%;}
+  .m-tall .eye.l{left:30%;} .m-tall .eye.r{right:30%;}
+  /* horned/antler */
+  .m-horn .body{width:78%;height:78%;border-radius:46% 46% 50% 50%/60% 60% 40% 40%;border:3px solid #000;}
+  .m-horn .horn{position:absolute;top:-6%;width:10%;height:40%;background:inherit;border:3px solid #000;border-radius:6px;}
+  .m-horn .horn.l{left:18%;transform:rotate(-22deg);}
+  .m-horn .horn.r{right:18%;transform:rotate(22deg);}
+  .m-horn .eye{position:absolute;top:42%;width:13%;height:13%;background:var(--red);border:2px solid #000;border-radius:50%;}
+  .m-horn .eye.l{left:26%;} .m-horn .eye.r{right:26%;}
+  /* spiky */
+  .m-spike .body{width:84%;height:70%;border-radius:50%;border:3px solid #000;}
+  .m-spike .sp{position:absolute;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid var(--ink);}
+  .m-spike .sp1{top:-4%;left:18%;} .m-spike .sp2{top:-8%;left:44%;} .m-spike .sp3{top:-4%;right:18%;}
+  .m-spike .eye{position:absolute;top:46%;width:14%;height:14%;background:#fff;border:2px solid #000;border-radius:50%;}
+  .m-spike .eye.l{left:28%;} .m-spike .eye.r{right:28%;}
+
+  /* SILHOUETTE slot */
+  .slot.sil{background:#1a0f29;}
+  .slot.sil .blob-area .mon .body,
+  .slot.sil .blob-area .mon .horn{background:#000 !important;border-color:#000 !important;}
+  .slot.sil .blob-area .mon .eye,
+  .slot.sil .blob-area .mon .sp{display:none;}
+  .slot.sil .qmark{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'Arial Black',Impact,sans-serif;font-size:30px;color:#6a5a90;
+    text-shadow:2px 2px 0 #000;z-index:2;
+  }
+
+  /* BLANK slot */
+  .slot.blank{
+    background:#160d22;
+    border-style:dashed;
+    box-shadow:4px 4px 0 #000;
+    justify-content:center;
+  }
+  .slot.blank .qmark{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:30px;color:#33274a;
+    margin:0;
+  }
+
+  .grid-caption{
+    margin-top:18px;
+    font-size:12px;
+    line-height:1.6;
+    background:#2a1640;
+    border:3px solid var(--ink);
+    border-radius:14px;
+    padding:12px 14px;
+    box-shadow:4px 4px 0 #000;
+  }
+  .grid-caption b{color:var(--orange);}
+
+  /* ---------- detail view ---------- */
+  .detail-portrait{
+    position:relative;
+    height:240px;
+    background:radial-gradient(circle at 50% 40%, #5a3a8a, #2a1640);
+    border:5px solid var(--ink);
+    border-radius:20px;
+    box-shadow:6px 6px 0 #000;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:16px;
+    overflow:hidden;
+  }
+  .detail-portrait .mon{width:150px;height:150px;}
+  .detail-portrait .tier-badge{font-size:13px;padding:4px 12px;top:10px;left:10px;}
+
+  .detail-name{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:34px;letter-spacing:2px;margin:6px 0 12px;
+    -webkit-text-stroke:1.5px #000;color:var(--text);
+  }
+  .lore{
+    font-size:14px;line-height:1.6;
+    background:#2a1640;border:3px solid var(--ink);border-radius:14px;
+    padding:13px 15px;box-shadow:4px 4px 0 #000;margin-bottom:14px;font-style:italic;
+  }
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .stat{
+    font-size:12px;font-weight:900;text-transform:uppercase;
+    background:var(--card);border:3px solid var(--ink);border-radius:10px;
+    padding:7px 12px;box-shadow:3px 3px 0 #000;
+  }
+  .stat span{color:var(--teal);display:block;font-size:16px;}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+  .btn{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:14px;text-transform:uppercase;letter-spacing:1px;
+    border:4px solid var(--ink);border-radius:14px;
+    padding:11px 18px;box-shadow:5px 5px 0 #000;cursor:pointer;color:#fff;
+  }
+  .btn-teal{background:var(--teal);color:#06302b;}
+  .btn-orange{background:var(--orange);}
+  .btn-pit{background:var(--gold);color:#3a2a00;}
+
+  .locked-card{
+    display:flex;align-items:center;gap:14px;
+    background:#1a0f29;border:4px solid var(--ink);border-radius:16px;
+    box-shadow:5px 5px 0 #000;padding:14px;
+  }
+  .locked-thumb{
+    position:relative;width:78px;height:78px;flex:0 0 auto;
+    background:#0f0819;border:4px solid var(--ink);border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .locked-thumb .mon{width:60%;height:60%;}
+  .locked-thumb .mon .body{background:#000 !important;border-color:#000 !important;}
+  .locked-thumb .mon .eye{display:none;}
+  .locked-text b{font-family:'Arial Black',Impact,sans-serif;font-size:16px;letter-spacing:1px;}
+  .locked-text p{margin:4px 0 0;font-size:12px;opacity:.85;line-height:1.5;}
+
+  /* ---------- reveal callout ---------- */
+  .callout{
+    max-width:1280px;margin:30px auto 0;
+    background:linear-gradient(135deg,#5C2A4A,#3A4C3A);
+    border:5px solid var(--ink);border-radius:22px;
+    box-shadow:8px 8px 0 #000;padding:22px 24px;
+  }
+  .callout h2{
+    font-family:'Arial Black',Impact,sans-serif;
+    font-size:22px;margin:0 0 10px;letter-spacing:1px;
+    -webkit-text-stroke:1px #000;color:var(--gold);
+  }
+  .callout p{font-size:14px;line-height:1.7;margin:0;}
+  .callout .stamp{
+    display:inline-block;background:var(--teal);color:#06302b;
+    font-family:'Arial Black';font-size:12px;border:3px solid #000;border-radius:8px;
+    padding:2px 8px;transform:rotate(-6deg);box-shadow:2px 2px 0 #000;
+  }
+  .section-tag{
+    display:block;text-align:center;max-width:1280px;margin:0 auto 16px;
+    font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;
+  }
+</style>
+</head>
+<body>
+
+  <div class="wordmark">
+    <h1>Veilwalkers</h1>
+    <div class="sub chunky">Codex Screen &mdash; UX Mock &mdash; "Pumpkin Patch" Visual Identity</div>
+  </div>
+
+  <div class="stage">
+
+    <!-- ============ VIEW 1 — CODEX GRID ============ -->
+    <section class="view">
+      <span class="view-label">View 1 &mdash; Codex Grid</span>
+
+      <div class="codex-head">
+        <h2 class="codex-title">CODEX</h2>
+        <div class="progress-badge">12 / 67<small>CAUGHT</small></div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><span class="swatch sw-disc"></span>Discovered</div>
+        <div class="legend-item"><span class="swatch sw-sil"></span>Silhouette (??? near tier)</div>
+        <div class="legend-item"><span class="swatch sw-blank"></span>Hidden (?)</div>
+      </div>
+
+      <div class="grid">
+
+        <!-- DISCOVERED x12 (T1-T3) -->
+        <div class="slot disc">
+          <span class="tier-badge b-t1">T1</span>
+          <div class="blob-area"><div class="mon m-blob"><div class="body" style="background:#7DE0C4"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Bloblin</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t1">T1</span>
+          <div class="blob-area"><div class="mon m-spike"><div class="sp sp1"></div><div class="sp sp2"></div><div class="sp sp3"></div><div class="body" style="background:#7DE0C4"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Pricklepuff</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t1">T1</span>
+          <div class="blob-area"><div class="mon m-blob"><div class="body" style="background:#9be8d0"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Mistmite</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-tall"><div class="body" style="background:#4FA8C9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Lurkwisp</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-spike"><div class="sp sp1"></div><div class="sp sp2"></div><div class="sp sp3"></div><div class="body" style="background:#4FA8C9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Snagtooth</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-blob"><div class="body" style="background:#62b6d6"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Gulpfrog</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-tall"><div class="body" style="background:#4FA8C9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Hollowmaw</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-horn"><div class="horn l" style="background:#6A5AC9"></div><div class="horn r" style="background:#6A5AC9"></div><div class="body" style="background:#6A5AC9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Gloomstag</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-tall"><div class="body" style="background:#6A5AC9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Dreadwick</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-horn"><div class="horn l" style="background:#7a6ad9"></div><div class="horn r" style="background:#7a6ad9"></div><div class="body" style="background:#7a6ad9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Wispgore</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-spike"><div class="sp sp1"></div><div class="sp sp2"></div><div class="sp sp3"></div><div class="body" style="background:#6A5AC9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Thornhag</div>
+        </div>
+        <div class="slot disc">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-blob"><div class="body" style="background:#7a6ad9"></div><div class="eye l"></div><div class="eye r"></div></div></div>
+          <div class="name">Nightnibble</div>
+        </div>
+
+        <!-- SILHOUETTE x6 (??? in encountered tiers, badge shown) -->
+        <div class="slot sil">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-tall"><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+        <div class="slot sil">
+          <span class="tier-badge b-t2">T2</span>
+          <div class="blob-area"><div class="mon m-spike"><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+        <div class="slot sil">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-horn"><div class="horn l"></div><div class="horn r"></div><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+        <div class="slot sil">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-blob"><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+        <div class="slot sil">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-tall"><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+        <div class="slot sil">
+          <span class="tier-badge b-t3">T3</span>
+          <div class="blob-area"><div class="mon m-spike"><div class="body"></div></div></div>
+          <div class="qmark">???</div>
+        </div>
+
+        <!-- BLANK x6 (top tiers, fully hidden, NO badge, NO silhouette) -->
+        <div class="slot blank"><div class="qmark">?</div></div>
+        <div class="slot blank"><div class="qmark">?</div></div>
+        <div class="slot blank"><div class="qmark">?</div></div>
+        <div class="slot blank"><div class="qmark">?</div></div>
+        <div class="slot blank"><div class="qmark">?</div></div>
+        <div class="slot blank"><div class="qmark">?</div></div>
+
+      </div>
+
+      <div class="grid-caption">
+        Three slot states reveal scope without spoiling dread:
+        <br><b>Discovered</b> = full chunky art + name + tier badge.
+        <br><b>Silhouette (???)</b> = a black shape + tier badge for monsters in tiers you've <i>begun</i> to encounter &mdash; you know it's out there.
+        <br><b>Hidden (?)</b> = flat empty slot, no shape, no badge. The scariest top-tier (Epic / Nightmare) monsters stay totally mysterious until you get close.
+      </div>
+    </section>
+
+    <!-- ============ VIEW 2 — MONSTER DETAIL ============ -->
+    <section class="view">
+      <span class="view-label">View 2 &mdash; Monster Detail</span>
+
+      <div class="detail-portrait">
+        <span class="tier-badge b-t3">T3 &middot; RARE</span>
+        <div class="mon m-horn">
+          <div class="horn l" style="background:#6A5AC9"></div>
+          <div class="horn r" style="background:#6A5AC9"></div>
+          <div class="body" style="background:#6A5AC9"></div>
+          <div class="eye l"></div><div class="eye r"></div>
+        </div>
+      </div>
+
+      <h2 class="detail-name">GLOOMSTAG</h2>
+
+      <p class="lore">
+        A stag made of leftover dusk, the Gloomstag wanders parking lots at the exact moment the
+        streetlights flicker on. Folks say its antlers aren't antlers at all, but the bare branches
+        of a tree that hasn't existed in two hundred years. It won't hurt you &mdash; it just wants you
+        to remember something you'd rather forget.
+      </p>
+
+      <div class="stats">
+        <div class="stat">Captures<span>3</span></div>
+        <div class="stat">First Seen<span>Today</span></div>
+        <div class="stat">Tier<span>Rare</span></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-teal">Track</button>
+        <button class="btn btn-orange">Lore Log</button>
+        <button class="btn btn-pit">Send to Pit</button>
+      </div>
+
+      <div class="locked-card">
+        <div class="locked-thumb">
+          <div class="mon m-tall"><div class="body"></div></div>
+        </div>
+        <div class="locked-text">
+          <b>??? &mdash; Not Yet Discovered</b>
+          <p>Teaser hint: "Something tall lingers near the old water tower after midnight. Bring a brighter Lure."</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ REVEAL ANIMATION CALLOUT ============ -->
+  <span class="section-tag">Animation Spec (described, not animated)</span>
+  <div class="callout">
+    <h2>The Codex Reveal</h2>
+    <p>
+      On first capture, the slot <b>flips</b> from silhouette to full art with a <span class="stamp">CAUGHT!</span>
+      stamp slamming down in the monster's tier color, and the counter ticks
+      <b>11 / 67 &rarr; 12 / 67</b>. When a new <b>TIER unlocks</b>, extra silhouettes fade
+      into the grid one by one &mdash; <i>"the Veil shows you more&hellip;"</i> &mdash; teasing the dread
+      that's now within reach.
+    </p>
+  </div>
+
+</body>
+</html>

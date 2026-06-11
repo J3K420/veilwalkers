@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Veilwalkers — Color Theme Directions</title>
+<style>
+/* =====================================================================
+   VEILWALKERS — COLOR THEME EXPLORATION
+   4 candidate palette directions. Each = Cartoon UI chrome + 5-step Dread Scale.
+   Concrete hex values documented per candidate below so they can be lifted.
+   =====================================================================
+
+   --------------------------------------------------------------------
+   CANDIDATE 1 — "CLASSIC VEIL"  (documented signature: dark navy + cyan)
+     background:        #0E1726
+     surface/card:      #1A2740
+     primary-accent:    #2DE3D5  (cyan/teal)
+     secondary-accent:  #6C7BFF  (periwinkle)
+     text-primary:      #EAF4FF
+     text-muted:        #8497B5
+     success:           #3CD98A
+     danger (SLAY):     #FF4D5E
+     credit-gold:       #FFD24A
+     Dread T1..T5:      #34E0CE  #2BB9C9  #3E7FA6  #4A4E86  #2A1C3E
+   --------------------------------------------------------------------
+   CANDIDATE 2 — "SPOOKY SATURDAY"  (warm cartoon: purple-night + orange)
+     background:        #1B0F2E
+     surface/card:      #2C1A47
+     primary-accent:    #38E1C5  (candy teal)
+     secondary-accent:  #FF8A2B  (pumpkin orange)
+     text-primary:      #FBEFFF
+     text-muted:        #A98FC4
+     success:           #57E08A
+     danger (SLAY):     #FF4767
+     credit-gold:       #FFC542
+     Dread T1..T5:      #45E3B7  #6AC06B  #B89A3E  #8A4E5C  #3A1530
+   --------------------------------------------------------------------
+   CANDIDATE 3 — "NEON ARCADE"  (near-black + electric cyan/magenta)
+     background:        #07080F
+     surface/card:      #14101F
+     primary-accent:    #16F2E5  (electric cyan)
+     secondary-accent:  #FF2BD0  (magenta)
+     text-primary:      #F2FBFF
+     text-muted:        #707A8F
+     success:           #2BFF9E
+     danger (SLAY):     #FF2D55
+     credit-gold:       #FFE24A
+     Dread T1..T5:      #19F5DE  #14C9E0  #6E5BFF  #C033E0  #2B0A33
+   --------------------------------------------------------------------
+   CANDIDATE 4 — "COZY SKETCHBOOK"  (paper-ink journal: slate + cream)
+     background:        #202733
+     surface/card:      #2C3542
+     primary-accent:    #5FB7AE  (muted teal)
+     secondary-accent:  #E8D8B0  (warm cream)
+     text-primary:      #F3ECDC
+     text-muted:        #9AA3AE
+     success:           #7CB89A
+     danger (SLAY):     #D9624E
+     credit-gold:       #E6B84A
+     Dread T1..T5:      #6FBDA9  #7FA07E  #9C8C5E  #6E5664  #2D2436
+   -------------------------------------------------------------------- */
+
+:root{
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+*{ box-sizing:border-box; margin:0; padding:0; }
+body{
+  font-family:var(--font);
+  background:#0a0c12;
+  color:#e7edf5;
+  padding:32px 24px 64px;
+  line-height:1.4;
+}
+.page-head{ max-width:1400px; margin:0 auto 28px; }
+.page-head h1{ font-size:26px; letter-spacing:.5px; }
+.page-head .sub{ color:#8b97aa; font-size:13px; margin-top:6px; max-width:760px; }
+.legend{ color:#8b97aa; font-size:12px; margin-top:10px; }
+
+.grid{
+  max-width:1400px; margin:0 auto;
+  display:grid; grid-template-columns:repeat(4,1fr); gap:20px;
+}
+@media (max-width:1100px){ .grid{ grid-template-columns:repeat(2,1fr); } }
+@media (max-width:560px){ .grid{ grid-template-columns:1fr; } }
+
+.card{
+  border-radius:16px; overflow:hidden;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 14px 40px rgba(0,0,0,.45);
+}
+.card-head{ padding:16px 16px 14px; }
+.card-head h2{ font-size:18px; letter-spacing:.4px; }
+.card-head .register{ font-size:12px; opacity:.78; margin-top:4px; font-style:italic; }
+
+.section-label{
+  font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+  opacity:.55; margin:14px 16px 8px;
+}
+
+/* token chips */
+.chips{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px; padding:0 16px; }
+.chip{
+  border-radius:9px; padding:9px 8px; min-height:54px;
+  display:flex; flex-direction:column; justify-content:space-between;
+  border:1px solid rgba(255,255,255,.12);
+}
+.chip .role{ font-size:9px; letter-spacing:.3px; opacity:.92; line-height:1.15; }
+.chip .hex{ font-size:9.5px; font-family:ui-monospace,Menlo,Consolas,monospace; opacity:.85; }
+
+/* UI snippet */
+.snippet{ margin:14px 16px 4px; border-radius:14px; padding:16px; position:relative; overflow:hidden; }
+.snip-title{ font-size:20px; font-weight:800; letter-spacing:1px; }
+.snip-tag{ font-size:10px; letter-spacing:2px; text-transform:uppercase; opacity:.7; margin-top:2px; }
+.snip-bal{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:14px; font-weight:700; padding:6px 12px; border-radius:20px;
+  margin:14px 0 16px;
+}
+.snip-hex{ font-size:16px; }
+.snip-btn{
+  display:block; text-align:center; font-weight:800; letter-spacing:1px;
+  padding:14px; border-radius:12px; font-size:14px;
+}
+.snip-row{ display:flex; gap:8px; margin-top:10px; }
+.snip-mini{
+  flex:1; text-align:center; font-size:10px; font-weight:700; letter-spacing:.5px;
+  padding:9px 4px; border-radius:9px;
+}
+
+/* dread scale */
+.dread{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; padding:6px 16px 18px; }
+.dswatch{ display:flex; flex-direction:column; }
+.dswatch .sw{
+  height:60px; border-radius:9px; border:1px solid rgba(255,255,255,.08);
+  position:relative; overflow:hidden;
+}
+/* monster-ish silhouette via radial blobs */
+.dswatch .sw::after{
+  content:""; position:absolute; left:50%; bottom:6px; transform:translateX(-50%);
+  width:22px; height:22px; border-radius:50% 50% 45% 45%;
+  background:rgba(0,0,0,.32);
+  box-shadow:-7px -3px 0 -4px rgba(0,0,0,.3), 7px -3px 0 -4px rgba(0,0,0,.3);
+}
+.dswatch .tier{ font-size:9px; font-weight:800; margin-top:6px; letter-spacing:.2px; }
+.dswatch .mood{ font-size:8.5px; opacity:.62; margin-top:2px; line-height:1.25; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Veilwalkers — Color Theme Directions</h1>
+  <div class="sub">Four palette registers for product-owner review. Each candidate pairs the constant <strong>cartoon UI chrome</strong> (app identity) with a <strong>5-step Dread Scale</strong> that escalates from playful Common to a stylized, Teen-safe Nightmare tier.</div>
+  <div class="legend">Brand tension: bright/playful chrome &nbsp;·&nbsp; monsters darken across rarity tiers. SLAY = prominent red. Credit currency = ⬡ gold.</div>
+</div>
+
+<div class="grid">
+
+  <!-- ================= CANDIDATE 1: CLASSIC VEIL ================= -->
+  <div class="card" style="background:#0E1726;color:#EAF4FF;">
+    <div class="card-head" style="background:linear-gradient(160deg,#16223A,#0E1726);">
+      <h2 style="color:#2DE3D5;">Classic Veil</h2>
+      <div class="register">Moody but friendly — the documented signature.</div>
+    </div>
+
+    <div class="section-label">UI chrome tokens</div>
+    <div class="chips">
+      <div class="chip" style="background:#0E1726;"><span class="role">background</span><span class="hex">#0E1726</span></div>
+      <div class="chip" style="background:#1A2740;"><span class="role">surface</span><span class="hex">#1A2740</span></div>
+      <div class="chip" style="background:#2DE3D5;color:#062a28;"><span class="role">primary</span><span class="hex">#2DE3D5</span></div>
+      <div class="chip" style="background:#6C7BFF;color:#0b0e26;"><span class="role">secondary</span><span class="hex">#6C7BFF</span></div>
+      <div class="chip" style="background:#1A2740;color:#EAF4FF;"><span class="role">text</span><span class="hex">#EAF4FF</span></div>
+      <div class="chip" style="background:#1A2740;color:#8497B5;"><span class="role">text-muted</span><span class="hex">#8497B5</span></div>
+      <div class="chip" style="background:#3CD98A;color:#04241a;"><span class="role">success</span><span class="hex">#3CD98A</span></div>
+      <div class="chip" style="background:#FF4D5E;color:#2a0508;"><span class="role">danger·SLAY</span><span class="hex">#FF4D5E</span></div>
+      <div class="chip" style="background:#FFD24A;color:#2e2300;"><span class="role">credit-gold</span><span class="hex">#FFD24A</span></div>
+    </div>
+
+    <div class="section-label">Home screen</div>
+    <div class="snippet" style="background:#1A2740;border:1px solid rgba(45,227,213,.18);">
+      <div class="snip-title" style="color:#EAF4FF;">Veilwalkers</div>
+      <div class="snip-tag" style="color:#2DE3D5;">AR Monster Hunt</div>
+      <div class="snip-bal" style="background:#0E1726;color:#FFD24A;border:1px solid rgba(255,210,74,.35);">
+        <span class="snip-hex">⬡</span> 20
+      </div>
+      <div class="snip-btn" style="background:#2DE3D5;color:#062a28;box-shadow:0 6px 18px rgba(45,227,213,.35);">ENTER AR HUNT</div>
+      <div class="snip-row">
+        <div class="snip-mini" style="background:#FF4D5E;color:#2a0508;">SLAY</div>
+        <div class="snip-mini" style="background:#0E1726;color:#6C7BFF;border:1px solid rgba(108,123,255,.4);">CODEX</div>
+      </div>
+    </div>
+
+    <div class="section-label">Dread scale (T1 → T5)</div>
+    <div class="dread">
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#5BF0E0,#34E0CE);"></div><div class="tier" style="color:#34E0CE;">T1 Common</div><div class="mood">Bright, friendly teal</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#34C6D6,#2BB9C9);"></div><div class="tier" style="color:#2BB9C9;">T2 Uncommon</div><div class="mood">Cooler, slightly eerie</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#4A8FB6,#3E7FA6);"></div><div class="tier" style="color:#79a7c4;">T3 Rare</div><div class="mood">Dim, unsettling depth</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#585C96,#4A4E86);"></div><div class="tier" style="color:#9097d6;">T4 Epic</div><div class="mood">Shadowed dread</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#3A2752,#2A1C3E);"></div><div class="tier" style="color:#8c6fb0;">T5 Nightmare</div><div class="mood">Oppressive bruise-violet</div></div>
+    </div>
+  </div>
+
+  <!-- ================= CANDIDATE 2: SPOOKY SATURDAY ================= -->
+  <div class="card" style="background:#1B0F2E;color:#FBEFFF;">
+    <div class="card-head" style="background:linear-gradient(160deg,#2C1A47,#1B0F2E);">
+      <h2 style="color:#FF8A2B;">Spooky Saturday</h2>
+      <div class="register">Cartoon candy-spooky — high saturation, playful.</div>
+    </div>
+
+    <div class="section-label">UI chrome tokens</div>
+    <div class="chips">
+      <div class="chip" style="background:#1B0F2E;"><span class="role">background</span><span class="hex">#1B0F2E</span></div>
+      <div class="chip" style="background:#2C1A47;"><span class="role">surface</span><span class="hex">#2C1A47</span></div>
+      <div class="chip" style="background:#38E1C5;color:#062b25;"><span class="role">primary</span><span class="hex">#38E1C5</span></div>
+      <div class="chip" style="background:#FF8A2B;color:#2e1500;"><span class="role">secondary</span><span class="hex">#FF8A2B</span></div>
+      <div class="chip" style="background:#2C1A47;color:#FBEFFF;"><span class="role">text</span><span class="hex">#FBEFFF</span></div>
+      <div class="chip" style="background:#2C1A47;color:#A98FC4;"><span class="role">text-muted</span><span class="hex">#A98FC4</span></div>
+      <div class="chip" style="background:#57E08A;color:#04261a;"><span class="role">success</span><span class="hex">#57E08A</span></div>
+      <div class="chip" style="background:#FF4767;color:#2a040c;"><span class="role">danger·SLAY</span><span class="hex">#FF4767</span></div>
+      <div class="chip" style="background:#FFC542;color:#2e2100;"><span class="role">credit-gold</span><span class="hex">#FFC542</span></div>
+    </div>
+
+    <div class="section-label">Home screen</div>
+    <div class="snippet" style="background:#2C1A47;border:1px solid rgba(255,138,43,.22);">
+      <div class="snip-title" style="color:#FBEFFF;">Veilwalkers</div>
+      <div class="snip-tag" style="color:#38E1C5;">AR Monster Hunt</div>
+      <div class="snip-bal" style="background:#1B0F2E;color:#FFC542;border:1px solid rgba(255,197,66,.4);">
+        <span class="snip-hex">⬡</span> 20
+      </div>
+      <div class="snip-btn" style="background:#FF8A2B;color:#2e1500;box-shadow:0 6px 18px rgba(255,138,43,.4);">ENTER AR HUNT</div>
+      <div class="snip-row">
+        <div class="snip-mini" style="background:#FF4767;color:#2a040c;">SLAY</div>
+        <div class="snip-mini" style="background:#1B0F2E;color:#38E1C5;border:1px solid rgba(56,225,197,.4);">CODEX</div>
+      </div>
+    </div>
+
+    <div class="section-label">Dread scale (T1 → T5)</div>
+    <div class="dread">
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#6CF0CC,#45E3B7);"></div><div class="tier" style="color:#45E3B7;">T1 Common</div><div class="mood">Candy-teal cheer</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#86CE73,#6AC06B);"></div><div class="tier" style="color:#6AC06B;">T2 Uncommon</div><div class="mood">Goblin-green eerie</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#C7A94B,#B89A3E);"></div><div class="tier" style="color:#c9ad55;">T3 Rare</div><div class="mood">Sickly amber unease</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#9A5866,#8A4E5C);"></div><div class="tier" style="color:#c47e8c;">T4 Epic</div><div class="mood">Bruised wine dread</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#4C1E40,#3A1530);"></div><div class="tier" style="color:#a85e92;">T5 Nightmare</div><div class="mood">Rotting magenta-black</div></div>
+    </div>
+  </div>
+
+  <!-- ================= CANDIDATE 3: NEON ARCADE ================= -->
+  <div class="card" style="background:#07080F;color:#F2FBFF;">
+    <div class="card-head" style="background:linear-gradient(160deg,#16101f,#07080F);">
+      <h2 style="color:#16F2E5;">Neon Arcade</h2>
+      <div class="register">High-contrast electric — punchy arcade energy.</div>
+    </div>
+
+    <div class="section-label">UI chrome tokens</div>
+    <div class="chips">
+      <div class="chip" style="background:#07080F;"><span class="role">background</span><span class="hex">#07080F</span></div>
+      <div class="chip" style="background:#14101F;"><span class="role">surface</span><span class="hex">#14101F</span></div>
+      <div class="chip" style="background:#16F2E5;color:#022a27;"><span class="role">primary</span><span class="hex">#16F2E5</span></div>
+      <div class="chip" style="background:#FF2BD0;color:#2a0023;"><span class="role">secondary</span><span class="hex">#FF2BD0</span></div>
+      <div class="chip" style="background:#14101F;color:#F2FBFF;"><span class="role">text</span><span class="hex">#F2FBFF</span></div>
+      <div class="chip" style="background:#14101F;color:#707A8F;"><span class="role">text-muted</span><span class="hex">#707A8F</span></div>
+      <div class="chip" style="background:#2BFF9E;color:#03281b;"><span class="role">success</span><span class="hex">#2BFF9E</span></div>
+      <div class="chip" style="background:#FF2D55;color:#2a040c;"><span class="role">danger·SLAY</span><span class="hex">#FF2D55</span></div>
+      <div class="chip" style="background:#FFE24A;color:#2e2700;"><span class="role">credit-gold</span><span class="hex">#FFE24A</span></div>
+    </div>
+
+    <div class="section-label">Home screen</div>
+    <div class="snippet" style="background:#14101F;border:1px solid rgba(22,242,229,.25);">
+      <div class="snip-title" style="color:#F2FBFF;">Veilwalkers</div>
+      <div class="snip-tag" style="color:#FF2BD0;">AR Monster Hunt</div>
+      <div class="snip-bal" style="background:#07080F;color:#FFE24A;border:1px solid rgba(255,226,74,.45);">
+        <span class="snip-hex">⬡</span> 20
+      </div>
+      <div class="snip-btn" style="background:#16F2E5;color:#022a27;box-shadow:0 0 22px rgba(22,242,229,.5);">ENTER AR HUNT</div>
+      <div class="snip-row">
+        <div class="snip-mini" style="background:#FF2D55;color:#2a040c;">SLAY</div>
+        <div class="snip-mini" style="background:#07080F;color:#FF2BD0;border:1px solid rgba(255,43,208,.45);">CODEX</div>
+      </div>
+    </div>
+
+    <div class="section-label">Dread scale (T1 → T5)</div>
+    <div class="dread">
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#4DFCEF,#19F5DE);"></div><div class="tier" style="color:#19F5DE;">T1 Common</div><div class="mood">Electric mint pop</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#33D6EC,#14C9E0);"></div><div class="tier" style="color:#14C9E0;">T2 Uncommon</div><div class="mood">Cool neon hum</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#7E6CFF,#6E5BFF);"></div><div class="tier" style="color:#8c7dff;">T3 Rare</div><div class="mood">Synthwave violet buzz</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#CE45EC,#C033E0);"></div><div class="tier" style="color:#d75ef0;">T4 Epic</div><div class="mood">Glaring toxic magenta</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#3B0E45,#2B0A33);"></div><div class="tier" style="color:#a35bc0;">T5 Nightmare</div><div class="mood">Dead-neon black void</div></div>
+    </div>
+  </div>
+
+  <!-- ================= CANDIDATE 4: COZY SKETCHBOOK ================= -->
+  <div class="card" style="background:#202733;color:#F3ECDC;">
+    <div class="card-head" style="background:linear-gradient(160deg,#2C3542,#202733);">
+      <h2 style="color:#5FB7AE;">Cozy Sketchbook</h2>
+      <div class="register">Paper-ink monster journal — soft, hand-drawn warmth.</div>
+    </div>
+
+    <div class="section-label">UI chrome tokens</div>
+    <div class="chips">
+      <div class="chip" style="background:#202733;"><span class="role">background</span><span class="hex">#202733</span></div>
+      <div class="chip" style="background:#2C3542;"><span class="role">surface</span><span class="hex">#2C3542</span></div>
+      <div class="chip" style="background:#5FB7AE;color:#082522;"><span class="role">primary</span><span class="hex">#5FB7AE</span></div>
+      <div class="chip" style="background:#E8D8B0;color:#33301f;"><span class="role">secondary</span><span class="hex">#E8D8B0</span></div>
+      <div class="chip" style="background:#2C3542;color:#F3ECDC;"><span class="role">text</span><span class="hex">#F3ECDC</span></div>
+      <div class="chip" style="background:#2C3542;color:#9AA3AE;"><span class="role">text-muted</span><span class="hex">#9AA3AE</span></div>
+      <div class="chip" style="background:#7CB89A;color:#06251a;"><span class="role">success</span><span class="hex">#7CB89A</span></div>
+      <div class="chip" style="background:#D9624E;color:#2a0a05;"><span class="role">danger·SLAY</span><span class="hex">#D9624E</span></div>
+      <div class="chip" style="background:#E6B84A;color:#2e2200;"><span class="role">credit-gold</span><span class="hex">#E6B84A</span></div>
+    </div>
+
+    <div class="section-label">Home screen</div>
+    <div class="snippet" style="background:#2C3542;border:1px solid rgba(232,216,176,.2);">
+      <div class="snip-title" style="color:#F3ECDC;">Veilwalkers</div>
+      <div class="snip-tag" style="color:#5FB7AE;">AR Monster Hunt</div>
+      <div class="snip-bal" style="background:#202733;color:#E6B84A;border:1px solid rgba(230,184,74,.4);">
+        <span class="snip-hex">⬡</span> 20
+      </div>
+      <div class="snip-btn" style="background:#5FB7AE;color:#082522;box-shadow:0 6px 16px rgba(95,183,174,.3);">ENTER AR HUNT</div>
+      <div class="snip-row">
+        <div class="snip-mini" style="background:#D9624E;color:#2a0a05;">SLAY</div>
+        <div class="snip-mini" style="background:#202733;color:#E8D8B0;border:1px solid rgba(232,216,176,.35);">CODEX</div>
+      </div>
+    </div>
+
+    <div class="section-label">Dread scale (T1 → T5)</div>
+    <div class="dread">
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#83C9BB,#6FBDA9);"></div><div class="tier" style="color:#6FBDA9;">T1 Common</div><div class="mood">Soft inked teal</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#90AE8C,#7FA07E);"></div><div class="tier" style="color:#7FA07E;">T2 Uncommon</div><div class="mood">Mossy page-green</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 35%,#AC9B6E,#9C8C5E);"></div><div class="tier" style="color:#b3a06a;">T3 Rare</div><div class="mood">Aged-parchment unease</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#7C6272,#6E5664);"></div><div class="tier" style="color:#a07e93;">T4 Epic</div><div class="mood">Smudged charcoal dread</div></div>
+      <div class="dswatch"><div class="sw" style="background:radial-gradient(circle at 50% 30%,#3A2F45,#2D2436);"></div><div class="tier" style="color:#8a6f9e;">T5 Nightmare</div><div class="mood">Ink-blot bruise dark</div></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
