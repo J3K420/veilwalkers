@@ -1,0 +1,32 @@
+{
+  "_README": [
+    "REFERENCE ONLY — do NOT blindly overwrite Unity's generated Packages/manifest.json.",
+    "Unity Hub + Package Manager generate and own manifest.json. Use this as the",
+    "target shape: confirm these four package lines exist at these version lines.",
+    "Confirm EXACT patch versions in Package Manager at install time (June 2026):",
+    "  - com.unity.xr.arfoundation: latest 5.x for Unity 2022.3 (e.g. 5.2.2). NOT 6.x.",
+    "  - com.unity.xr.arcore: MUST equal the arfoundation version number exactly.",
+    "  - com.unity.purchasing: >= 5.0.0 (bundles Google Play Billing 8.0.0).",
+    "  - com.unity.nuget.newtonsoft-json: latest 2022.3-compatible.",
+    "ARCore Extensions is added separately via 'Add package from git URL':",
+    "  https://github.com/google-ar/arcore-unity-extensions.git#arf5",
+    "It will appear in manifest.json as a git dependency line (shown below, commented",
+    "conceptually — remove the placeholder if Package Manager wrote its own).",
+    "The dependencies below also include the standard URP-template packages Unity",
+    "adds automatically; LET UNITY MANAGE those. Only the AR/IAP/JSON lines are the",
+    "story's responsibility to verify."
+  ],
+  "dependencies": {
+    "com.unity.xr.arfoundation": "5.2.2",
+    "com.unity.xr.arcore": "5.2.2",
+    "com.unity.purchasing": "5.0.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.google.ar.core.arfoundation.extensions": "https://github.com/google-ar/arcore-unity-extensions.git#arf5",
+
+    "_NOTE_below_are_URP_template_defaults_let_unity_own_them": "----",
+    "com.unity.render-pipelines.universal": "<provided by 3D (URP) template>",
+    "com.unity.ugui": "<provided by template>",
+    "com.unity.modules.androidjni": "<provided>",
+    "com.unity.modules.xr": "<provided>"
+  }
+}
