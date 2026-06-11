@@ -72,7 +72,11 @@ desktop.ini
 # Personal/user-scoped install answers and overrides; team config is committed.
 **/*.user.toml
 **/*.user.yaml
+# Ignore generated output, but commit shared planning state (sprint status + story specs).
 _bmad-output/
+!_bmad-output/
+_bmad-output/*
+!_bmad-output/implementation-artifacts/
 
 # ============================================
 # Secrets / keystores (NEVER commit)
