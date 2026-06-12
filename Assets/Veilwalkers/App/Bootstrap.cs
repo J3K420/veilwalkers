@@ -1,5 +1,7 @@
+using System.Threading.Tasks;
 using UnityEngine;
 using Veilwalkers.Core;
+using Veilwalkers.Persistence;
 
 namespace Veilwalkers.App
 {
@@ -9,13 +11,24 @@ namespace Veilwalkers.App
     /// <see cref="GameServices.MarkReady"/> to seal the table, after which the rest
     /// of the app may read services.
     /// <para>
-    /// Right now there are no concrete services to wire — they arrive in Story 1.3+
-    /// (SaveService, CreditService, …). This stub exists to be the named, single
-    /// composition root and to prove the wire-once → read pattern. Bootstrap does
-    /// NOT own the AR session, and it does NOT own scene flow (the AppStateMachine
-    /// lands in Story 6.3); it only assembles services.
+    /// Lives in the Bootstrap entry scene (scene 0 in Build Settings) and runs at
+    /// <c>[DefaultExecutionOrder(-1000)]</c> so no other <c>Awake</c> can race the
+    /// composition root. Bootstrap does NOT own the AR session, and it does NOT own
+    /// scene flow (the AppStateMachine lands in Story 6.3); it only assembles
+    /// services and kicks the initial save load.
+    /// </para>
+    /// <para>
+    /// Mid-wiring failure recovery (chosen approach): all service instances are
+    /// CONSTRUCTED before the first <c>Register</c> call (constructors are where
+    /// realistic failures live, and a constructor throw therefore aborts before the
+    /// locator is touched), and every registration is guarded by
+    /// <see cref="GameServices.IsRegistered{T}"/> so re-running the wiring after a
+    /// partial failure skips what already landed instead of dying on the
+    /// duplicate-registration guard. Reset-and-rethrow was rejected because no
+    /// locator reset exists in player builds (by design — wire-once).
     /// </para>
     /// </summary>
+    [DefaultExecutionOrder(-1000)]
     public sealed class Bootstrap : MonoBehaviour
     {
         private void Awake()
@@ -23,9 +36,26 @@ namespace Veilwalkers.App
             WireServices();
         }
 
+#if UNITY_EDITOR
         /// <summary>
-        /// Register every service instance, then seal the table. Service
-        /// registrations are added here as later stories introduce them.
+        /// Returns <see cref="GameServices"/> statics to the unready state at the
+        /// start of every Editor play session. Today Enter Play Mode Options are OFF
+        /// (full domain reload — this is then a harmless no-op on fresh statics), but
+        /// <c>EditorSettings.asset</c> already stores the fast-enter option flags, so
+        /// this future-proofs anyone later enabling them. Editor-only: a player
+        /// process always starts with fresh statics.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticsForEnterPlayMode()
+        {
+            GameServices.ResetForFastEnterPlayMode();
+        }
+#endif
+
+        /// <summary>
+        /// Register every service instance, then seal the table and kick the initial
+        /// save load. Service registrations are added here as later stories introduce
+        /// them.
         /// </summary>
         private void WireServices()
         {
@@ -37,11 +67,50 @@ namespace Veilwalkers.App
                 return;
             }
 
-            // No services to register yet (Story 1.3+ will add them here), e.g.:
-            //   GameServices.Register<IClock>(new SystemClock());
+            try
+            {
+                // Construct first (see class doc: failures here leave the locator
+                // untouched). persistentDataPath is main-thread-only, which is why it
+                // is read HERE and passed into the store rather than inside it.
+                var clock = new SystemClock();
+                var progressStore = new LocalProgressStore(Application.persistentDataPath);
+                var saveService = new SaveService(progressStore);
 
-            GameServices.MarkReady();
-            GameLog.Info("Bootstrap: GameServices wired and sealed.");
+                if (!GameServices.IsRegistered<IClock>())
+                {
+                    GameServices.Register<IClock>(clock);
+                }
+
+                if (!GameServices.IsRegistered<IProgressStore>())
+                {
+                    GameServices.Register<IProgressStore>(progressStore);
+                }
+
+                if (!GameServices.IsRegistered<SaveService>())
+                {
+                    GameServices.Register<SaveService>(saveService);
+                }
+
+                GameServices.MarkReady();
+                GameLog.Info("Bootstrap: GameServices wired and sealed.");
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Error(
+                    "Bootstrap: wiring failed — locator left recoverable (idempotent " +
+                    $"re-run will skip already-registered services). {ex}");
+                throw;
+            }
+
+            // Fire-and-forget is acceptable for now (awaited boot staging is AR-14),
+            // but the fault MUST be observed so a load failure never dies as an
+            // unobserved task exception. Resolve via Get<> so the registered instance
+            // is always the one initialized.
+            GameServices.Get<SaveService>().InitializeAsync().ContinueWith(
+                task => GameLog.Error(
+                    "Bootstrap: SaveService.InitializeAsync faulted: " +
+                    task.Exception?.GetBaseException()),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 }

@@ -82,6 +82,21 @@ namespace Veilwalkers.Core
         }
 
         /// <summary>
+        /// Whether a service is already registered for <typeparamref name="T"/>.
+        /// Callable BEFORE <see cref="MarkReady"/> on purpose: the composition root
+        /// uses it to make wiring idempotent, so a mid-wiring failure can be
+        /// recovered by re-running the wiring (already-registered services are
+        /// skipped instead of dying on the duplicate-registration guard).
+        /// </summary>
+        public static bool IsRegistered<T>() where T : class
+        {
+            lock (Gate)
+            {
+                return Services.ContainsKey(typeof(T));
+            }
+        }
+
+        /// <summary>
         /// Seal the table. After this call the wiring is read-only and
         /// <see cref="Get{T}"/> will resolve registered services. Calling twice is
         /// rejected so the "wire once" rule is explicit.
@@ -134,6 +149,29 @@ namespace Veilwalkers.Core
         /// player builds cannot use it to defeat the wire-once rule.
         /// </summary>
         public static void ResetForTests()
+        {
+            ResetCore();
+        }
+#endif
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Editor-only reset hook for Enter Play Mode Options with domain reload
+        /// disabled: statics survive between Editor play sessions there, so Bootstrap
+        /// calls this from a <c>SubsystemRegistration</c>
+        /// <c>RuntimeInitializeOnLoadMethod</c> to return the locator to unready at
+        /// the start of every play. Compiled out of player builds entirely (a player
+        /// process always starts with fresh statics), so it cannot defeat the
+        /// wire-once rule at runtime.
+        /// </summary>
+        public static void ResetForFastEnterPlayMode()
+        {
+            ResetCore();
+        }
+#endif
+
+#if UNITY_INCLUDE_TESTS || UNITY_EDITOR
+        private static void ResetCore()
         {
             lock (Gate)
             {

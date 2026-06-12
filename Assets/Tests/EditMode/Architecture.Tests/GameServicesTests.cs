@@ -95,6 +95,28 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         [Test]
+        public void IsRegistered_reflects_registration_before_MarkReady()
+        {
+            // Callable pre-ready on purpose: this is what lets the composition root
+            // re-run wiring idempotently after a mid-wiring failure.
+            Assert.IsFalse(GameServices.IsRegistered<ISampleService>());
+
+            GameServices.Register<ISampleService>(new SampleService());
+
+            Assert.IsTrue(GameServices.IsRegistered<ISampleService>());
+        }
+
+        [Test]
+        public void IsRegistered_remains_true_after_MarkReady_and_false_for_unregistered()
+        {
+            GameServices.Register<ISampleService>(new SampleService());
+            GameServices.MarkReady();
+
+            Assert.IsTrue(GameServices.IsRegistered<ISampleService>());
+            Assert.IsFalse(GameServices.IsRegistered<SampleService>());
+        }
+
+        [Test]
         public void ResetForTests_returns_locator_to_unready_state()
         {
             GameServices.Register<ISampleService>(new SampleService());
