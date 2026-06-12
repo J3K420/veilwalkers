@@ -1,5 +1,5 @@
 # generated: 2026-06-10
-# last_updated: 2026-06-10
+# last_updated: 2026-06-11
 # project: Veilwalkers
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,9 +35,9 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-10
-last_updated: 2026-06-10
+last_updated: 2026-06-11
 project: Veilwalkers
-# last_updated bump: 2026-06-10 (story 1-1 → ready-for-dev; epic-1 → in-progress)
+# last_updated bump: 2026-06-11 (story 1-1 → done after code review; epic-1 → in-progress)
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
@@ -45,7 +45,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   # Epic 1: Foundation — Project, Persistence & Economy Core
   epic-1: in-progress
-  1-1-initialize-unity-ar-project-with-pinned-packages: review
+  1-1-initialize-unity-ar-project-with-pinned-packages: done
   1-2-establish-assembly-boundaries-and-composition-root: backlog
   1-3-persist-player-state-with-encrypted-atomic-local-save: backlog
   1-4-grant-and-spend-credits-through-the-ledger: backlog

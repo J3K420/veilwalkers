@@ -4,7 +4,7 @@ baseline_commit: c49c8bfdb21ad941e99fa56ac138eb45d2a93182
 
 # Story 1.1: Initialize Unity AR project with pinned packages
 
-Status: review (all editor steps completed on 2026-06-11; AC-1/2/3 verified; awaiting code review)
+Status: done (code review passed 2026-06-11; AC-1/2/3 verified on disk; 1 patch applied, 3 build settings deferred to AR-21)
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -66,6 +66,15 @@ So that all later work builds on a compliant, reproducible foundation.
   - [x] Reopen the project clean and confirm zero compile errors and zero console errors. → clean after iOS module added.
   - [~] Produce a **debug `.aab` build** to prove AC-2 end-to-end. → **Build *configuration* verified (Android/AR-Required/ARM64/IL2CPP/API24/.aab mode all set).** A full `.aab` device build (IL2CPP compile + Android SDK license acceptance) is deferred to the first release build per the story's own guidance that device-build is a release-gate item, not a unit gate. **Left to verify on a build machine:** run File→Build to emit an actual `.aab`.
   - [x] Commit the initialized project (per CLAUDE.md: commit + push at the end of the session).
+
+## Review Findings
+
+_Code review 2026-06-11 (bmad-code-review, focused-surface scope over baseline `c49c8bf`→`c304980`). 3 layers: Blind Hunter, Acceptance Auditor, Edge Case Hunter (run inline — dedicated subagent unavailable). All 3 ACs verified satisfied. 1 patch, 3 deferred (to AR-21), 8 dismissed as noise._
+
+- [x] [Review][Patch] sprint-status.yaml comment is self-contradictory — added comment says "story 1-1 → ready-for-dev" while the value was set to `review`, and it's labeled "last_updated bump" though `last_updated:` was not changed. [_bmad-output/implementation-artifacts/sprint-status.yaml:40] — FIXED: comment corrected to "story 1-1 → review after code review", date → 2026-06-11.
+- [x] [Review][Defer] `AndroidTargetSdkVersion: 0` (Automatic = highest installed) is non-reproducible across build machines; Play enforces a moving target-SDK floor [ProjectSettings/ProjectSettings.asset:177] — deferred to AR-21: target SDK is a release-gate decision (Play floor moves over time); Story 1.1 is scoped to foundation-opens-and-compiles. Pin in AR-21 alongside .aab mode + bundle ID.
+- [x] [Review][Defer] `.aab` Build-App-Bundle toggle not committed — lives in gitignored `Library/EditorUserBuildSettings`, so a fresh clone won't carry .aab output mode [ProjectSettings/EditorUserBuildSettings.asset] — deferred, pre-existing (release-gate per Task 6 `[~]` + Testing Reqs; owned by AR-21).
+- [x] [Review][Defer] `applicationIdentifier` empty / package name = template default `com.UnityTechnologies.*` — blocks Play upload but not an AC of this story [ProjectSettings/ProjectSettings.asset:165] — deferred, pre-existing (already flagged in Dev Agent Record; owned by AR-21).
 
 ## Dev Notes
 
