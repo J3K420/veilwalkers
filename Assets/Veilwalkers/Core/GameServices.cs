@@ -6,6 +6,9 @@ namespace Veilwalkers.Core
     /// <summary>
     /// The single composition root: a wiring table mapping a service type to its
     /// instance. It is populated ONCE at App/Bootstrap and is read-only thereafter.
+    /// All members are safe to call from any thread: wiring happens on the main
+    /// thread, but reads may arrive from background callbacks (e.g. Play Billing),
+    /// so state is published under a lock.
     /// <para>
     /// <b>Locator confinement (enforced by convention):</b> only <c>App/Bootstrap</c>
     /// is allowed to WIRE this table (<see cref="Register{T}"/> + <see cref="MarkReady"/>),
@@ -19,39 +22,63 @@ namespace Veilwalkers.Core
     /// </summary>
     public static class GameServices
     {
+        private static readonly object Gate = new object();
         private static readonly Dictionary<Type, object> Services = new Dictionary<Type, object>();
         private static bool _ready;
 
         /// <summary>True once <see cref="MarkReady"/> has been called.</summary>
-        public static bool IsReady => _ready;
+        public static bool IsReady
+        {
+            get
+            {
+                lock (Gate)
+                {
+                    return _ready;
+                }
+            }
+        }
 
         /// <summary>
         /// Register a service instance under type <typeparamref name="T"/>. Only
-        /// callable during wiring (before <see cref="MarkReady"/>); registering after
-        /// the table is sealed, with a null instance, or twice for the same type is
-        /// rejected with an <see cref="InvalidOperationException"/>.
+        /// callable during wiring (before <see cref="MarkReady"/>). Registering after
+        /// the table is sealed or twice for the same type is rejected with an
+        /// <see cref="InvalidOperationException"/>; a null instance is rejected with
+        /// an <see cref="ArgumentNullException"/>; a destroyed
+        /// <see cref="UnityEngine.Object"/> is rejected with an <see cref="ArgumentException"/>.
         /// </summary>
         public static void Register<T>(T instance) where T : class
         {
-            if (_ready)
-            {
-                throw new InvalidOperationException(
-                    $"GameServices is sealed (MarkReady already called); cannot register {typeof(T).Name}.");
-            }
-
             if (instance == null)
             {
                 throw new ArgumentNullException(nameof(instance),
                     $"Cannot register a null instance for {typeof(T).Name}.");
             }
 
-            if (Services.ContainsKey(typeof(T)))
+            // The generic null check above is CLR reference equality and does not use
+            // Unity's overloaded ==, so a destroyed-but-not-null UnityEngine.Object
+            // would slip through it and Get<T>() would hand out a dead object later.
+            if (instance is UnityEngine.Object unityObject && !unityObject)
             {
-                throw new InvalidOperationException(
-                    $"Service {typeof(T).Name} is already registered.");
+                throw new ArgumentException(
+                    $"Cannot register a destroyed {typeof(T).Name} instance.", nameof(instance));
             }
 
-            Services[typeof(T)] = instance;
+            lock (Gate)
+            {
+                if (_ready)
+                {
+                    throw new InvalidOperationException(
+                        $"GameServices is sealed (MarkReady already called); cannot register {typeof(T).Name}.");
+                }
+
+                if (Services.ContainsKey(typeof(T)))
+                {
+                    throw new InvalidOperationException(
+                        $"Service {typeof(T).Name} is already registered.");
+                }
+
+                Services[typeof(T)] = instance;
+            }
         }
 
         /// <summary>
@@ -61,12 +88,15 @@ namespace Veilwalkers.Core
         /// </summary>
         public static void MarkReady()
         {
-            if (_ready)
+            lock (Gate)
             {
-                throw new InvalidOperationException("GameServices.MarkReady has already been called.");
-            }
+                if (_ready)
+                {
+                    throw new InvalidOperationException("GameServices.MarkReady has already been called.");
+                }
 
-            _ready = true;
+                _ready = true;
+            }
         }
 
         /// <summary>
@@ -77,31 +107,40 @@ namespace Veilwalkers.Core
         /// </summary>
         public static T Get<T>() where T : class
         {
-            if (!_ready)
+            lock (Gate)
             {
-                throw new ServicesNotReadyException(
-                    $"GameServices.Get<{typeof(T).Name}>() called before wiring completed. " +
-                    "Services are wired once at App/Bootstrap; read them only after MarkReady().");
-            }
+                if (!_ready)
+                {
+                    throw new ServicesNotReadyException(
+                        $"GameServices.Get<{typeof(T).Name}>() called before wiring completed. " +
+                        "Services are wired once at App/Bootstrap; read them only after MarkReady().");
+                }
 
-            if (!Services.TryGetValue(typeof(T), out var instance))
-            {
-                throw new KeyNotFoundException(
-                    $"No service registered for type {typeof(T).Name}.");
-            }
+                if (!Services.TryGetValue(typeof(T), out var instance))
+                {
+                    throw new KeyNotFoundException(
+                        $"No service registered for type {typeof(T).Name}.");
+                }
 
-            return (T)instance;
+                return (T)instance;
+            }
         }
 
+#if UNITY_INCLUDE_TESTS
         /// <summary>
         /// Clear the table and return to the unready state. FOR TESTS ONLY: lets
-        /// each test start from a clean locator and register its own fakes. Not part
-        /// of the production flow.
+        /// each test start from a clean locator and register its own fakes. Compiled
+        /// only where UNITY_INCLUDE_TESTS is defined (the Editor and test builds), so
+        /// player builds cannot use it to defeat the wire-once rule.
         /// </summary>
         public static void ResetForTests()
         {
-            Services.Clear();
-            _ready = false;
+            lock (Gate)
+            {
+                Services.Clear();
+                _ready = false;
+            }
         }
+#endif
     }
 }

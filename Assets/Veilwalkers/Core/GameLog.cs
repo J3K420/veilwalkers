@@ -10,7 +10,11 @@ namespace Veilwalkers.Core
     /// </summary>
     public static class GameLog
     {
-        /// <summary>Verbose diagnostic detail; typically stripped from release.</summary>
+        /// <summary>
+        /// Verbose diagnostic detail. Currently routed to the console unfiltered,
+        /// identically to <see cref="Info"/> — level filtering / release stripping is
+        /// not implemented yet; when it lands, it lands here.
+        /// </summary>
         public static void Debug(string message) => UnityEngine.Debug.Log(message);
 
         /// <summary>Normal operational information.</summary>

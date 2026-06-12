@@ -1,0 +1,5 @@
+# Monsters/Codex/ — home for the Codex queries/UI-facing collection code, which
+# folds into the Monsters assembly (no asmdef of its own). Tracked-but-empty: git
+# cannot track an empty directory, and without this file a fresh clone would orphan
+# Codex.meta (Unity deletes the meta → dirty working tree + GUID churn). Code lands
+# with Epic 2 (CodexService etc.).

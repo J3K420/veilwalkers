@@ -21,60 +21,82 @@ namespace Veilwalkers.Architecture.Tests
     /// regardless of whether each assembly has code yet.
     /// </para>
     /// <para>
-    /// It asserts the negative ("no upward edge"), which is robust to legitimate
-    /// same-tier/downward edges such as the future Economy → Persistence interface
-    /// dependency documented in the Story 1.2 notes.
+    /// Enforcement is an explicit per-assembly allowlist (the Story 1.2 reference
+    /// matrix), not a tier-rank comparison: a rank check would let a forbidden
+    /// one-way sideways edge (e.g. <c>AR → Encounter</c>) pass, and Unity's import
+    /// step only rejects true cycles, not sideways edges. Legitimate new edges (e.g.
+    /// the Story 1.4 <c>Economy → Persistence</c> interface dependency) are added to
+    /// the matrix deliberately, as a visible test edit.
     /// </para>
     /// </summary>
     public sealed class AcyclicDependencyTests
     {
         private const string Prefix = "Veilwalkers.";
 
-        // Tier rank per the canonical graph. Lower rank = closer to Core (a
-        // dependency target). A reference is illegal only if it points to a
-        // STRICTLY higher rank than the referencing assembly.
-        private static readonly Dictionary<string, int> TierRank = new Dictionary<string, int>
+        // The allowed-edge matrix from the Story 1.2 Dev Notes: each assembly maps to
+        // the ONLY Veilwalkers assemblies it may reference. Every legal edge points
+        // toward Core; anything not listed here is forbidden (upward AND sideways).
+        // Story 1.4 is expected to add "Veilwalkers.Persistence" to Economy's row.
+        private static readonly Dictionary<string, string[]> AllowedReferences = new Dictionary<string, string[]>
         {
-            { "Veilwalkers.Core", 0 },
-            { "Veilwalkers.Persistence", 1 },
-            { "Veilwalkers.Economy", 1 },
-            { "Veilwalkers.Monsters", 1 },
-            { "Veilwalkers.AR", 2 },
-            { "Veilwalkers.Encounter", 2 },
-            { "Veilwalkers.Billing", 2 },
-            { "Veilwalkers.App", 3 },
-            { "Veilwalkers.UI", 4 },
+            { "Veilwalkers.Core", Array.Empty<string>() },
+            { "Veilwalkers.Persistence", new[] { "Veilwalkers.Core" } },
+            { "Veilwalkers.Economy", new[] { "Veilwalkers.Core" } },
+            { "Veilwalkers.Monsters", new[] { "Veilwalkers.Core" } },
+            { "Veilwalkers.AR", new[] { "Veilwalkers.Core" } },
+            {
+                "Veilwalkers.Encounter",
+                new[] { "Veilwalkers.Core", "Veilwalkers.Economy", "Veilwalkers.Monsters", "Veilwalkers.AR" }
+            },
+            { "Veilwalkers.Billing", new[] { "Veilwalkers.Core", "Veilwalkers.Economy" } },
+            {
+                "Veilwalkers.App",
+                new[]
+                {
+                    "Veilwalkers.Core", "Veilwalkers.Persistence", "Veilwalkers.Economy",
+                    "Veilwalkers.Monsters", "Veilwalkers.AR", "Veilwalkers.Encounter", "Veilwalkers.Billing"
+                }
+            },
+            {
+                "Veilwalkers.UI",
+                new[]
+                {
+                    "Veilwalkers.Core", "Veilwalkers.Persistence", "Veilwalkers.Economy",
+                    "Veilwalkers.Monsters", "Veilwalkers.AR", "Veilwalkers.Encounter", "Veilwalkers.Billing",
+                    "Veilwalkers.App"
+                }
+            },
         };
 
         /// <summary>
-        /// Every ranked Veilwalkers asmdef that declares a reference to another ranked
-        /// Veilwalkers asmdef must reference a tier rank &lt;= its own.
+        /// Every Veilwalkers → Veilwalkers reference declared on disk must be on the
+        /// referencing assembly's allowlist. This forbids upward edges AND sideways
+        /// edges the matrix does not sanction. An assembly missing from the matrix
+        /// entirely is itself a violation (see also the dedicated guard test below).
         /// </summary>
         [Test]
-        public void No_Veilwalkers_assembly_references_a_higher_tier()
+        public void Every_Veilwalkers_reference_is_on_the_allowed_edge_list()
         {
             var graph = LoadVeilwalkersAsmdefGraph();
             var violations = new List<string>();
 
             foreach (KeyValuePair<string, List<string>> entry in graph)
             {
-                if (!TierRank.TryGetValue(entry.Key, out int ownRank))
+                if (!AllowedReferences.TryGetValue(entry.Key, out string[] allowed))
                 {
+                    violations.Add(
+                        $"{entry.Key} is not in the allowed-edge matrix — add it (with its sanctioned " +
+                        "references) so the architecture guard covers it.");
                     continue;
                 }
 
                 foreach (string referenced in entry.Value)
                 {
-                    if (!TierRank.TryGetValue(referenced, out int referencedRank))
-                    {
-                        continue;
-                    }
-
-                    if (referencedRank > ownRank)
+                    if (!allowed.Contains(referenced))
                     {
                         violations.Add(
-                            $"{entry.Key} (tier {ownRank}) references " +
-                            $"{referenced} (tier {referencedRank}) — upward dependency is forbidden.");
+                            $"{entry.Key} references {referenced}, which its allowlist does not sanction " +
+                            "(edges must point toward Core and be declared in the matrix).");
                     }
                 }
             }
@@ -82,19 +104,37 @@ namespace Veilwalkers.Architecture.Tests
             Assert.IsEmpty(
                 violations,
                 "Assembly dependency graph must stay one-way (Core ← services ← App ← UI). " +
-                "Upward references found:\n" + string.Join("\n", violations));
+                "Forbidden references found:\n" + string.Join("\n", violations));
         }
 
         /// <summary>
-        /// Guards the test itself: every ranked Veilwalkers assembly is expected to
-        /// exist on disk as an asmdef. If the graph is renamed/removed this fails
-        /// loudly rather than silently passing on a graph it never inspected.
+        /// Guards the guard: every non-test <c>Veilwalkers.*</c> asmdef on disk must
+        /// have an entry in the allowed-edge matrix. Without this, a newly added
+        /// assembly would be invisible to enforcement until someone remembered to
+        /// extend the matrix.
+        /// </summary>
+        [Test]
+        public void Every_Veilwalkers_asmdef_on_disk_has_an_allowlist_entry()
+        {
+            var present = LoadVeilwalkersAsmdefGraph().Keys.ToHashSet();
+            var unranked = present.Where(name => !AllowedReferences.ContainsKey(name)).ToList();
+
+            Assert.IsEmpty(
+                unranked,
+                "Veilwalkers asmdefs on disk are missing from the allowed-edge matrix " +
+                "(add each with its sanctioned references): " + string.Join(", ", unranked));
+        }
+
+        /// <summary>
+        /// Guards the test itself: every assembly in the matrix is expected to exist
+        /// on disk as an asmdef. If the graph is renamed/removed this fails loudly
+        /// rather than silently passing on a graph it never inspected.
         /// </summary>
         [Test]
         public void All_expected_Veilwalkers_assemblies_are_present()
         {
             var present = LoadVeilwalkersAsmdefGraph().Keys.ToHashSet();
-            var missing = TierRank.Keys.Where(expected => !present.Contains(expected)).ToList();
+            var missing = AllowedReferences.Keys.Where(expected => !present.Contains(expected)).ToList();
 
             Assert.IsEmpty(
                 missing,
@@ -103,8 +143,8 @@ namespace Veilwalkers.Architecture.Tests
 
         /// <summary>
         /// No service assembly (Core/Persistence/Economy/Monsters/AR/Encounter/Billing)
-        /// may reference App or UI. This is a stronger, explicit restatement of AC-1's
-        /// "no service assembly references UI or App".
+        /// may reference App or UI. Redundant with the allowlist, but kept as an
+        /// explicit restatement of AC-1's "no service assembly references UI or App".
         /// </summary>
         [Test]
         public void No_service_assembly_references_App_or_UI()
@@ -115,8 +155,7 @@ namespace Veilwalkers.Architecture.Tests
 
             foreach (KeyValuePair<string, List<string>> entry in graph)
             {
-                // Services are tiers 0–2; App (3) and UI (4) are not "services".
-                if (!TierRank.TryGetValue(entry.Key, out int ownRank) || ownRank >= 3)
+                if (topTier.Contains(entry.Key))
                 {
                     continue;
                 }
@@ -136,16 +175,16 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         /// <summary>
-        /// Loads every <c>Veilwalkers.*</c> asmdef on disk and returns a map of
-        /// assembly name → the list of Veilwalkers assembly names it references.
-        /// Test asmdefs (<c>*.Tests</c>) are excluded. Handles both name-based and
-        /// GUID-based references.
+        /// Loads every <c>Veilwalkers.*</c> asmdef under <c>Assets/</c> and returns a
+        /// map of assembly name → the list of Veilwalkers assembly names it references.
+        /// Test asmdefs (<c>*.Tests</c> suffix) are excluded. Handles both name-based
+        /// and GUID-based references.
         /// </summary>
         private static Dictionary<string, List<string>> LoadVeilwalkersAsmdefGraph()
         {
             var graph = new Dictionary<string, List<string>>();
 
-            foreach (string guid in AssetDatabase.FindAssets("t:AssemblyDefinitionAsset"))
+            foreach (string guid in AssetDatabase.FindAssets("t:AssemblyDefinitionAsset", new[] { "Assets" }))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 string json = File.ReadAllText(path);
@@ -156,20 +195,32 @@ namespace Veilwalkers.Architecture.Tests
                     continue;
                 }
 
-                if (!asmdef.name.StartsWith(Prefix) || asmdef.name.Contains(".Tests"))
+                if (!asmdef.name.StartsWith(Prefix, StringComparison.Ordinal) || IsTestAssembly(asmdef.name))
                 {
                     continue;
                 }
 
                 var refs = (asmdef.references ?? Array.Empty<string>())
                     .Select(ResolveReferenceName)
-                    .Where(n => !string.IsNullOrEmpty(n) && n.StartsWith(Prefix) && !n.Contains(".Tests"))
+                    .Where(n => !string.IsNullOrEmpty(n)
+                        && n.StartsWith(Prefix, StringComparison.Ordinal)
+                        && !IsTestAssembly(n))
                     .ToList();
 
                 graph[asmdef.name] = refs;
             }
 
             return graph;
+        }
+
+        /// <summary>
+        /// A test assembly is identified by the ".Tests" SUFFIX only — a Contains
+        /// check would wrongly exempt a production assembly with ".Tests" anywhere in
+        /// its name (e.g. a hypothetical Veilwalkers.TestsSupport).
+        /// </summary>
+        private static bool IsTestAssembly(string assemblyName)
+        {
+            return assemblyName.EndsWith(".Tests", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -184,7 +235,7 @@ namespace Veilwalkers.Architecture.Tests
                 return null;
             }
 
-            if (!reference.StartsWith("GUID:"))
+            if (!reference.StartsWith("GUID:", StringComparison.Ordinal))
             {
                 return reference;
             }

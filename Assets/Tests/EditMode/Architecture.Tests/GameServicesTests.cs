@@ -55,6 +55,39 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         [Test]
+        public void Register_null_instance_throws_ArgumentNullException()
+        {
+            Assert.Throws<System.ArgumentNullException>(
+                () => GameServices.Register<ISampleService>(null));
+        }
+
+        [Test]
+        public void Register_same_type_twice_is_rejected()
+        {
+            GameServices.Register<ISampleService>(new SampleService());
+            Assert.Throws<System.InvalidOperationException>(
+                () => GameServices.Register<ISampleService>(new SampleService()));
+        }
+
+        [Test]
+        public void MarkReady_twice_is_rejected()
+        {
+            GameServices.MarkReady();
+            Assert.Throws<System.InvalidOperationException>(() => GameServices.MarkReady());
+        }
+
+        [Test]
+        public void Register_destroyed_UnityObject_is_rejected()
+        {
+            var doomed = new UnityEngine.GameObject("doomed");
+            UnityEngine.Object.DestroyImmediate(doomed);
+
+            // CLR null check alone would pass a destroyed (fake-null) Unity object.
+            Assert.Throws<System.ArgumentException>(
+                () => GameServices.Register<UnityEngine.GameObject>(doomed));
+        }
+
+        [Test]
         public void Get_for_unregistered_type_after_ready_throws_KeyNotFound()
         {
             GameServices.MarkReady();

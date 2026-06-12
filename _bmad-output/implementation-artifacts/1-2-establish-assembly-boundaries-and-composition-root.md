@@ -4,7 +4,7 @@ baseline_commit: 520d352
 
 # Story 1.2: Establish assembly boundaries and composition root
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -76,6 +76,28 @@ So that the one-way dependency graph is enforced and services resolve from one p
   - [x] Sanity-check the dependency graph in the Editor (each asmdef inspector shows only the allowed references; no service asmdef lists `Veilwalkers.UI`/`Veilwalkers.App`).
   - [x] Confirm all new `.cs`, `.asmdef`, and `.meta` files are tracked (asmdefs and their `.meta` are committed; generated `.csproj`/`.sln` remain gitignored). [Source: CLAUDE.md#Working conventions; docs/architecture.md#Complete Project Directory Structure]
   - [x] Commit + push at end of session (per CLAUDE.md). [Source: CLAUDE.md#Working conventions]
+
+### Review Findings
+
+_Adversarial code review of 946628c..HEAD (2026-06-11): Blind Hunter + Edge Case Hunter + Acceptance Auditor. AC verdicts: AC-1 pass · AC-2 pass · AC-3 pass-with-deviation (asmdef-JSON test instead of CompilationPipeline — documented, sound). 5 findings dismissed as noise._
+
+- [x] [Review][Decision] (RESOLVED: strengthen to allowlist — implemented) Graph guard enforces tier-monotonicity only — forbidden sideways edges pass — The spec prescribed the rank-based "no strictly-higher tier" assertion (robust to the future Economy→Persistence edge), and Unity itself rejects true asmdef cycles at import; but the task text "do not add upward **or sideways** references" has no automated enforcement: an illegal one-way same-tier edge (e.g. `AR→Encounter`, `Monsters→Economy`) compiles fine and passes all three tests. Options: (a) strengthen the test to an explicit per-assembly allowed-reference allowlist (catches sideways edges; must be updated when 1.4 adds Economy→Persistence), (b) keep the spec-prescribed rank test and record the gap, (c) defer the decision to Story 1.4 when the first same-tier edge lands. [Assets/Tests/EditMode/Architecture.Tests/AcyclicDependencyTests.cs:73]
+- [x] [Review][Patch] Add `.gitkeep` to `Monsters/Codex/` — empty dir is untracked; fresh clone orphans `Codex.meta`, Unity deletes it → dirty tree + GUID churn [Assets/Veilwalkers/Monsters/Codex.meta]
+- [x] [Review][Patch] Add guard test: every non-test `Veilwalkers.*` asmdef on disk must have a `TierRank` entry — unranked assemblies are silently invisible to all three architecture tests (both `TryGetValue` misses `continue`; the presence test only checks expected⊆present) [Assets/Tests/EditMode/Architecture.Tests/AcyclicDependencyTests.cs:61-71]
+- [x] [Review][Patch] Fix `Register<T>` XML-doc — says null instance is rejected with `InvalidOperationException`; code throws `ArgumentNullException` [Assets/Veilwalkers/Core/GameServices.cs:30-32]
+- [x] [Review][Patch] Fix `GameLog.Debug` doc — promises "typically stripped from release" with no stripping mechanism; Debug is byte-identical to Info [Assets/Veilwalkers/Core/GameLog.cs:13]
+- [x] [Review][Patch] Fix `sprint-status.yaml` — stray comment claims a `last_updated` bump to 2026-06-12 while the field reads 2026-06-11 (and 2026-06-12 was a future date) [_bmad-output/implementation-artifacts/sprint-status.yaml:40]
+- [x] [Review][Patch] Complete the story record — File List omits `.gitignore`, `docs/epics.md`, `deferred-work.md`, and the `Assets/Plugins*` files; Implementation Plan still claims `CompilationPipeline.GetAssemblies` though the shipped test reads asmdef JSON; acknowledge the `.gitignore` edit as a documented deviation from the Dev Note "do not edit `.gitignore`" [this file]
+- [x] [Review][Patch] Remove dead `Veilwalkers.App` reference from the test asmdef — neither test file uses an App type (graph is inspected via AssetDatabase, Bootstrap is untested) [Assets/Tests/EditMode/Architecture.Tests/Veilwalkers.Architecture.Tests.asmdef:8]
+- [x] [Review][Patch] Add missing locator guard tests — null register (`ArgumentNullException`), duplicate register, and double `MarkReady` are guarded in code but untested; a null-path test would have caught the doc/exception mismatch [Assets/Tests/EditMode/Architecture.Tests/GameServicesTests.cs]
+- [x] [Review][Patch] Harden the asmdef loader — `.Contains(".Tests")` over-excludes (e.g. a future `Veilwalkers.TestsSupport`); `FindAssets` is unscoped and reads every package asmdef on each of the three tests (scope to `Assets/`) [Assets/Tests/EditMode/Architecture.Tests/AcyclicDependencyTests.cs:148-166]
+- [x] [Review][Patch] Synchronize `GameServices` static state — plain `bool _ready` + unsynchronized `Dictionary`; on ARM a thread can observe `_ready == true` before the dictionary writes are visible; Play Billing callbacks (Epic 5) arrive on a binder thread [Assets/Veilwalkers/Core/GameServices.cs:22-23]
+- [x] [Review][Patch] Guard `Register<T>` against destroyed `UnityEngine.Object` — generic `== null` is CLR reference equality, so Unity fake-null passes the guard and `Get<T>()` later hands out a dead object [Assets/Veilwalkers/Core/GameServices.cs:42]
+- [x] [Review][Patch] Gate `ResetForTests()` behind `#if UNITY_INCLUDE_TESTS` — currently public production API in the shipping Core assembly, defeating the wire-once invariant from any code path [Assets/Veilwalkers/Core/GameServices.cs:101-105]
+- [x] [Review][Patch] Enforce value-type invariants — `default(Result)` has a null `Message` (doc says never null; coerce in the getter) and `SpendResult.Failed(SpendFailureReason.None, …)` builds a failure carrying the success sentinel (guard the factory); negative-balance validation stays with Story 1.4's spend pipeline [Assets/Veilwalkers/Core/Result.cs, Assets/Veilwalkers/Core/SpendResult.cs]
+- [x] [Review][Defer] Bootstrap runtime lifecycle — Bootstrap is in no scene, so the composition root never executes at runtime; scene placement, an execution-order guarantee (`DefaultExecutionOrder`/`RuntimeInitializeOnLoadMethod`), domain-reload-disabled static reset, and mid-wiring-failure recovery all become real when Bootstrap enters a scene with the first real service [Assets/Veilwalkers/App/Bootstrap.cs] — deferred to Story 1.3 (spec permits a near-empty shell; nothing exists to wire yet)
+- [x] [Review][Defer] `AnchorToken` accepts null/empty `trackableId` and `default` is indistinguishable from "no anchor" — add a validity helper when the restore path is built [Assets/Veilwalkers/Core/Contracts/AnchorToken.cs] — deferred to Story 3.5 (spec says field shape minimal now; no consumers exist)
+- [x] [Review][Defer] EDM4U resolver outputs (`*.aar`/`*.jar`/`*.srcaar` in `Assets/Plugins/Android/`) are not gitignored — if "Patch mainTemplate.gradle" is off, resolved binaries land in a tracked folder [.gitignore] — deferred to AR-21 (commit-vs-ignore policy for resolved artifacts belongs with the other EDM4U build-gate decisions)
 
 ## Dev Notes
 
@@ -204,7 +226,7 @@ claude-opus-4-8 (Claude Code, dev-story workflow)
 - **Task 1 (asmdefs):** authored 9 `Veilwalkers.<Area>.asmdef` files with name-based (not GUID) references encoding only the allowed downward edges from the Dev Notes reference matrix. Economy/Persistence kept at Core-only for this story (forward Economy→Persistence edge deferred to 1.4 as documented). `Pit/` left asmdef-free with a `.gitkeep`.
 - **Task 2 (Core contracts):** one public type per file. Split `SpendResult`'s reason enum into its own `SpendFailureReason.cs` to honor the one-type-per-file rule. `AnchorToken` is `[Serializable]` and uses only UnityEngine math types (no AR-Foundation), keeping Core below AR.
 - **Task 3 (composition root):** `GameServices` static wiring table — `Register<T>` (pre-ready only) → `MarkReady()` (seals) → `Get<T>()` (throws `ServicesNotReadyException` before ready, `KeyNotFoundException` for unregistered). `ResetForTests()` clears state. XML-doc states the locator-confinement rule. `Bootstrap` MonoBehaviour is the single, near-empty wiring entry point.
-- **Task 4 (Architecture.Tests):** Editor-only test asmdef. Acyclicity test ranks tiers (Core=0 … UI=4) and fails on any strictly-upward Veilwalkers→Veilwalkers reference via `CompilationPipeline.GetAssemblies`. Locator tests cover throws-before-ready / returns-after-wire / reset.
+- **Task 4 (Architecture.Tests):** Editor-only test asmdef. Graph tests read the `.asmdef` JSON on disk — NOT `CompilationPipeline.GetAssemblies()` as originally planned; Unity emits no assembly for the still-empty areas, so that approach was abandoned mid-story (see Completion Notes "Key design decision"). After code review the guard was further strengthened from a tier-rank comparison to the explicit allowed-edge matrix, which also catches forbidden sideways edges. Locator tests cover throws-before-ready / returns-after-wire / reset, plus (post-review) the guard paths: null/destroyed/duplicate register and double MarkReady.
 
 ### Completion Notes List
 
@@ -234,7 +256,7 @@ claude-opus-4-8 (Claude Code, dev-story workflow)
 - `Assets/Veilwalkers/Core/GameServices.cs`
 - `Assets/Veilwalkers/Persistence/Veilwalkers.Persistence.asmdef`
 - `Assets/Veilwalkers/Economy/Veilwalkers.Economy.asmdef`
-- `Assets/Veilwalkers/Monsters/Veilwalkers.Monsters.asmdef` (+ empty `Monsters/Codex/` folder)
+- `Assets/Veilwalkers/Monsters/Veilwalkers.Monsters.asmdef` (+ `Monsters/Codex/.gitkeep` — the Codex folder is tracked-but-empty; the `.gitkeep` was added in code review because git cannot track an empty directory and a fresh clone would have orphaned `Codex.meta`)
 - `Assets/Veilwalkers/AR/Veilwalkers.AR.asmdef`
 - `Assets/Veilwalkers/Encounter/Veilwalkers.Encounter.asmdef`
 - `Assets/Veilwalkers/Billing/Veilwalkers.Billing.asmdef`
@@ -251,13 +273,21 @@ claude-opus-4-8 (Claude Code, dev-story workflow)
 
 _(Every `.cs`/`.asmdef` above has a committed `.meta`; folder `.meta` files for `Assets/Veilwalkers`, each area folder, `Core/Contracts`, `Monsters/Codex`, `Assets/Tests`, `EditMode`, and `Architecture.Tests` are also committed. Generated `Library/`, `obj/`, `*.csproj`, `*.sln` remain gitignored.)_
 
+**New — build/infra (EDM4U fix, commits `358c86c` / `7985f71`):**
+
+- `Assets/Plugins.meta`, `Assets/Plugins/Android.meta`, `Assets/Plugins/Android/.gitkeep` — tracked-but-empty copy target so the EDM4U Android Resolver does not throw `DirectoryNotFoundException` (full rationale + AR-21 routing in `deferred-work.md`)
+
 **Modified:**
 
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (story 1-2 → in-progress → review)
 - `_bmad-output/implementation-artifacts/1-2-establish-assembly-boundaries-and-composition-root.md` (this file)
+- `.gitignore` (EDM4U Android Gradle-template ignore block — a **documented deviation** from the Dev Note "do not edit `.gitignore`": the EDM4U resolver crash forced it mid-story; rationale recorded in `deferred-work.md`, owner AR-21)
+- `docs/epics.md` (AR-21: cross-reference to the EDM4U Gradle-template build-gate item)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (story-1.2 EDM4U deferral; later also the code-review deferrals)
 
 ### Change Log
 
 | Date | Change |
 |---|---|
-| 2026-06-12 | Implemented Story 1.2: 9 area asmdefs (one-way acyclic graph), Core contract/seam types, `GameServices` composition root + `ServicesNotReadyException` + `Bootstrap`, and EditMode `Architecture.Tests` (acyclicity + locator). Validated via headless Unity batch EditMode run: 8/8 tests pass, clean compile. Status → review. |
+| 2026-06-11 | Implemented Story 1.2: 9 area asmdefs (one-way acyclic graph), Core contract/seam types, `GameServices` composition root + `ServicesNotReadyException` + `Bootstrap`, and EditMode `Architecture.Tests` (acyclicity + locator). Validated via headless Unity batch EditMode run: 8/8 tests pass, clean compile. Status → review. |
+| 2026-06-11 | Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on 946628c..HEAD. Verdicts: AC-1 pass, AC-2 pass, AC-3 pass-with-deviation (documented). 1 decision resolved (graph guard strengthened from tier-rank to the explicit allowed-edge matrix — catches forbidden sideways edges) + 13 patches applied: `Monsters/Codex/.gitkeep` (fresh-clone orphaned-meta bug), new-asmdef allowlist-coverage guard test, `GameServices` thread-safety lock + destroyed-`UnityEngine.Object` register guard + `UNITY_INCLUDE_TESTS`-gated `ResetForTests` + doc fixes, `GameLog.Debug` doc fix, `Result`/`SpendResult` default-struct/factory invariant guards, 4 new locator tests, asmdef-loader hardening (`Assets/`-scoped scan, `.Tests` suffix match), dead test-asmdef App reference removed, story record + sprint comment corrections. 3 items deferred (Bootstrap runtime lifecycle → Story 1.3; `AnchorToken` validity → Story 3.5; EDM4U artifact ignore policy → AR-21; see deferred-work.md). Re-verified via headless EditMode run: **13/13 tests pass, 0 compile errors**. Status → done. |

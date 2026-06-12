@@ -4,8 +4,7 @@
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "Veilwalkers.Core",
-        "Veilwalkers.App"
+        "Veilwalkers.Core"
     ],
     "includePlatforms": [
         "Editor"
