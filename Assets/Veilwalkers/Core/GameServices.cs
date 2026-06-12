@@ -82,21 +82,6 @@ namespace Veilwalkers.Core
         }
 
         /// <summary>
-        /// Whether a service is already registered for <typeparamref name="T"/>.
-        /// Callable BEFORE <see cref="MarkReady"/> on purpose: the composition root
-        /// uses it to make wiring idempotent, so a mid-wiring failure can be
-        /// recovered by re-running the wiring (already-registered services are
-        /// skipped instead of dying on the duplicate-registration guard).
-        /// </summary>
-        public static bool IsRegistered<T>() where T : class
-        {
-            lock (Gate)
-            {
-                return Services.ContainsKey(typeof(T));
-            }
-        }
-
-        /// <summary>
         /// Seal the table. After this call the wiring is read-only and
         /// <see cref="Get{T}"/> will resolve registered services. Calling twice is
         /// rejected so the "wire once" rule is explicit.

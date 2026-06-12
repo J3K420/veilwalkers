@@ -46,7 +46,7 @@ development_status:
   epic-1: in-progress
   1-1-initialize-unity-ar-project-with-pinned-packages: done
   1-2-establish-assembly-boundaries-and-composition-root: done
-  1-3-persist-player-state-with-encrypted-atomic-local-save: review
+  1-3-persist-player-state-with-encrypted-atomic-local-save: done
   1-4-grant-and-spend-credits-through-the-ledger: backlog
   1-5-earn-xp-and-award-charges-via-progression: backlog
   1-6-configure-economy-values-data-drivenly: backlog

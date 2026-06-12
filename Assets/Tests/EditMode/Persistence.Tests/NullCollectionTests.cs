@@ -66,6 +66,25 @@ namespace Veilwalkers.Persistence.Tests
         }
 
         [Test]
+        public void Null_list_ELEMENTS_are_removed_on_load_never_returned()
+        {
+            // Element-level repair: crafted [null] entries inside lists must not
+            // survive into the loaded model (downstream iteration would null-ref).
+            TestSaveFiles.WriteCraftedSave(_dir,
+                "{\"schemaVersion\":1," +
+                "\"codex\":{\"mon01\":{\"scanned\":true,\"variantFlags\":[null,\"shadow\"]}}," +
+                "\"pendingPurchases\":[null]," +
+                "\"encounterSnapshot\":{\"anchors\":[],\"monsters\":[null]}}");
+
+            SaveModel loaded = _store.LoadAsync().GetAwaiter().GetResult();
+
+            Assert.IsEmpty(loaded.PendingPurchases, "A [null] purchase entry must be dropped.");
+            Assert.IsEmpty(loaded.EncounterSnapshot.Monsters, "A [null] monster entry must be dropped.");
+            CollectionAssert.AreEqual(new[] { "shadow" }, loaded.Codex["mon01"].VariantFlags,
+                "Null variant-flag elements must be dropped; real ones kept.");
+        }
+
+        [Test]
         public void Saving_a_model_with_null_collections_persists_empty_not_null()
         {
             var model = new SaveModel

@@ -18,14 +18,15 @@ namespace Veilwalkers.App
     /// services and kicks the initial save load.
     /// </para>
     /// <para>
-    /// Mid-wiring failure recovery (chosen approach): all service instances are
-    /// CONSTRUCTED before the first <c>Register</c> call (constructors are where
+    /// Mid-wiring failure handling (chosen approach): all service instances are
+    /// CONSTRUCTED before the first <c>Register</c> call — constructors are where
     /// realistic failures live, and a constructor throw therefore aborts before the
-    /// locator is touched), and every registration is guarded by
-    /// <see cref="GameServices.IsRegistered{T}"/> so re-running the wiring after a
-    /// partial failure skips what already landed instead of dying on the
-    /// duplicate-registration guard. Reset-and-rethrow was rejected because no
-    /// locator reset exists in player builds (by design — wire-once).
+    /// locator is touched, leaving it clean. <c>Register</c>/<c>MarkReady</c> throw
+    /// only on programmer error (null/duplicate/sealed), so a partially-registered
+    /// locator is not a reachable runtime state; a wiring failure is treated as
+    /// fatal at boot (log + rethrow). A retry surface, if ever wanted, arrives with
+    /// scene flow in Story 6.3. Reset-and-rethrow was rejected because no locator
+    /// reset exists in player builds (by design — wire-once).
     /// </para>
     /// </summary>
     [DefaultExecutionOrder(-1000)]
@@ -76,20 +77,9 @@ namespace Veilwalkers.App
                 var progressStore = new LocalProgressStore(Application.persistentDataPath);
                 var saveService = new SaveService(progressStore);
 
-                if (!GameServices.IsRegistered<IClock>())
-                {
-                    GameServices.Register<IClock>(clock);
-                }
-
-                if (!GameServices.IsRegistered<IProgressStore>())
-                {
-                    GameServices.Register<IProgressStore>(progressStore);
-                }
-
-                if (!GameServices.IsRegistered<SaveService>())
-                {
-                    GameServices.Register<SaveService>(saveService);
-                }
+                GameServices.Register<IClock>(clock);
+                GameServices.Register<IProgressStore>(progressStore);
+                GameServices.Register<SaveService>(saveService);
 
                 GameServices.MarkReady();
                 GameLog.Info("Bootstrap: GameServices wired and sealed.");
@@ -97,8 +87,8 @@ namespace Veilwalkers.App
             catch (System.Exception ex)
             {
                 GameLog.Error(
-                    "Bootstrap: wiring failed — locator left recoverable (idempotent " +
-                    $"re-run will skip already-registered services). {ex}");
+                    "Bootstrap: wiring failed — fatal at boot (a constructor throw " +
+                    $"leaves the locator untouched; see class doc). {ex}");
                 throw;
             }
 

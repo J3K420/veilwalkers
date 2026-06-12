@@ -40,9 +40,12 @@ namespace Veilwalkers.Persistence
             }
             else
             {
+                // Null ELEMENTS (crafted/corrupt input) are removed so iteration
+                // can never null-ref.
+                Monsters.RemoveAll(m => m == null);
                 foreach (EncounterMonsterStateData monster in Monsters)
                 {
-                    monster?.CoerceNullCollections();
+                    monster.CoerceNullCollections();
                 }
             }
         }

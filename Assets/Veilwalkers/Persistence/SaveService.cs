@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Veilwalkers.Core;
 
@@ -31,6 +33,7 @@ namespace Veilwalkers.Persistence
 
         private SaveModel _current;
         private SaveStatus _status = SaveStatus.Idle;
+        private int _savesInFlight;
 
         /// <summary>Raised when a save begins (AR-19 long-op surface).</summary>
         public event Action OnSaveStarted;
@@ -98,20 +101,33 @@ namespace Veilwalkers.Persistence
             {
                 if (!_store.Exists())
                 {
-                    var fresh = new SaveModel();
-                    await _store.SaveAsync(fresh).ConfigureAwait(false);
-                    PublishModel(fresh);
-                    GameLog.Info("SaveService: no save found — created and persisted a fresh default save.");
+                    await CreateFreshAsync().ConfigureAwait(false);
                     return;
                 }
 
-                SaveModel loaded = await _store.LoadAsync().ConfigureAwait(false);
+                SaveModel loaded;
+                try
+                {
+                    loaded = await _store.LoadAsync().ConfigureAwait(false);
+                }
+                catch (FileNotFoundException)
+                {
+                    // The file vanished between Exists() and the load (external
+                    // deletion or a concurrent DeleteAsync): the same situation as
+                    // no-save-yet, so create defaults rather than reporting Failed.
+                    await CreateFreshAsync().ConfigureAwait(false);
+                    return;
+                }
+
                 PublishModel(loaded);
                 GameLog.Info("SaveService: save loaded.");
             }
             catch (SaveCorruptException ex)
             {
-                SetStatus(SaveStatus.Corrupt);
+                // Clears Current too: the doc promises Current is null while the
+                // save is corrupt and unrecovered — consumers must not keep running
+                // on a stale prior model.
+                PublishCorrupt();
 
                 // Warn, not Error: a corrupt save is an EXPECTED, handled state with a
                 // designed recovery flow (retry / start fresh) — GameLog.Warn's
@@ -172,20 +188,39 @@ namespace Veilwalkers.Persistence
                     "SaveService has no loaded model to save — call InitializeAsync first.");
             }
 
+            Interlocked.Increment(ref _savesInFlight);
             SetStatus(SaveStatus.Saving);
-            OnSaveStarted?.Invoke();
             try
             {
+                // Inside the try: a throwing subscriber must not strand Status at
+                // Saving with the catch never running.
+                OnSaveStarted?.Invoke();
                 await _store.SaveAsync(model).ConfigureAwait(false);
-                SetStatus(SaveStatus.Idle);
+
+                // Only the LAST completing save reports Idle — overlapping saves
+                // must not tell the AR-19 surface "idle" while a write is in flight.
+                if (Interlocked.Decrement(ref _savesInFlight) == 0)
+                {
+                    SetStatus(SaveStatus.Idle);
+                }
+
                 OnSaveCompleted?.Invoke();
             }
             catch (Exception ex)
             {
+                Interlocked.Decrement(ref _savesInFlight);
                 SetStatus(SaveStatus.Failed);
                 GameLog.Error($"SaveService: save failed. {ex.Message}");
                 throw;
             }
+        }
+
+        private async Task CreateFreshAsync()
+        {
+            var fresh = new SaveModel();
+            await _store.SaveAsync(fresh).ConfigureAwait(false);
+            PublishModel(fresh);
+            GameLog.Info("SaveService: no save found — created and persisted a fresh default save.");
         }
 
         private void PublishModel(SaveModel model)
@@ -194,6 +229,15 @@ namespace Veilwalkers.Persistence
             {
                 _current = model;
                 _status = SaveStatus.Idle;
+            }
+        }
+
+        private void PublishCorrupt()
+        {
+            lock (_gate)
+            {
+                _current = null;
+                _status = SaveStatus.Corrupt;
             }
         }
 

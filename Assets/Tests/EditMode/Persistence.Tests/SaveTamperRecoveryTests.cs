@@ -104,6 +104,45 @@ namespace Veilwalkers.Persistence.Tests
         }
 
         [Test]
+        public void Non_numeric_anchor_component_throws_SaveCorrupt()
+        {
+            // Converter conversions throw FormatException (not JsonException) for
+            // non-numeric components; that must still classify as corruption so the
+            // recovery flow is offered instead of a Failed rethrow.
+            TestSaveFiles.WriteCraftedSave(_dir,
+                "{\"schemaVersion\":1,\"encounterSnapshot\":{\"anchors\":[{\"trackableId\":\"t\"," +
+                "\"position\":{\"x\":\"abc\",\"y\":0,\"z\":0}," +
+                "\"rotation\":{\"x\":0,\"y\":0,\"z\":0,\"w\":1}}],\"monsters\":[]}}");
+
+            Assert.Throws<SaveCorruptException>(
+                () => _store.LoadAsync().GetAwaiter().GetResult());
+        }
+
+        [Test]
+        public void Corruption_after_a_successful_load_clears_Current()
+        {
+            _store.SaveAsync(new SaveModel { Credits = 7 }).GetAwaiter().GetResult();
+
+            var service = new SaveService(_store);
+            service.InitializeAsync().GetAwaiter().GetResult();
+            Assert.IsNotNull(service.Current);
+
+            // The file is tampered AFTER a successful session load; a re-load must
+            // not leave consumers running on the stale prior model (the doc promises
+            // Current is null while corrupt and unrecovered).
+            string path = TestSaveFiles.SavePath(_dir);
+            byte[] tampered = File.ReadAllBytes(path);
+            tampered[tampered.Length / 2] ^= 0xFF;
+            File.WriteAllBytes(path, tampered);
+
+            service.RetryLoadAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual(SaveStatus.Corrupt, service.Status);
+            Assert.IsNull(service.Current,
+                "A corrupt re-load must clear the stale in-memory model.");
+        }
+
+        [Test]
         public void RetryLoad_recovers_once_the_file_is_intact_again()
         {
             byte[] good = SaveAndTamper(7);

@@ -128,6 +128,12 @@ namespace Veilwalkers.Persistence
             {
                 PendingPurchases = new List<PendingPurchaseRecord>();
             }
+            else
+            {
+                // Null ELEMENTS (crafted/corrupt input) are removed, not just null
+                // collections — downstream iteration must never null-ref.
+                PendingPurchases.RemoveAll(p => p == null);
+            }
 
             if (AdReward == null)
             {

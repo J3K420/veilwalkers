@@ -88,6 +88,58 @@ namespace Veilwalkers.Persistence.Tests
         }
 
         [Test]
+        public void Throwing_OnSaveStarted_subscriber_cannot_strand_status_at_Saving()
+        {
+            _service.InitializeAsync().GetAwaiter().GetResult();
+            _service.OnSaveStarted += () => throw new InvalidOperationException("bad subscriber");
+
+            // The subscriber throws BEFORE the first await, so the Error log lands
+            // on this thread and LogAssert can expect it (the run-2 UTF trap only
+            // bites for logs raised from thread-pool continuations).
+            UnityEngine.TestTools.LogAssert.Expect(
+                UnityEngine.LogType.Error,
+                new System.Text.RegularExpressions.Regex("SaveService: save failed"));
+
+            Assert.Catch<InvalidOperationException>(
+                () => _service.SaveAsync().GetAwaiter().GetResult());
+
+            Assert.AreEqual(SaveStatus.Failed, _service.Status,
+                "A throwing subscriber must surface as Failed, never a stuck Saving.");
+        }
+
+        [Test]
+        public void File_vanishing_between_Exists_and_Load_falls_back_to_fresh_create()
+        {
+            // The TOCTOU case: Exists() said yes, but the file is gone by the time
+            // the load runs (external deletion / concurrent delete). That is the
+            // same situation as no-save-yet and must create defaults, not Fail.
+            var service = new SaveService(new VanishingStore(_store));
+
+            service.InitializeAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual(SaveStatus.Idle, service.Status);
+            Assert.IsNotNull(service.Current);
+            Assert.AreEqual(0, service.Current.Credits);
+        }
+
+        /// <summary>Reports an existing save whose load discovers the file is gone.</summary>
+        private sealed class VanishingStore : IProgressStore
+        {
+            private readonly IProgressStore _inner;
+
+            public VanishingStore(IProgressStore inner) => _inner = inner;
+
+            public bool Exists() => true;
+
+            public System.Threading.Tasks.Task<SaveModel> LoadAsync() =>
+                throw new System.IO.FileNotFoundException("vanished");
+
+            public System.Threading.Tasks.Task SaveAsync(SaveModel model) => _inner.SaveAsync(model);
+
+            public System.Threading.Tasks.Task DeleteAsync() => _inner.DeleteAsync();
+        }
+
+        [Test]
         public void SaveAsync_before_initialize_throws_InvalidOperation()
         {
             Assert.Throws<InvalidOperationException>(

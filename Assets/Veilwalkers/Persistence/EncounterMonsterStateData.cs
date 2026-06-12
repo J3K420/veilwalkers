@@ -21,12 +21,19 @@ namespace Veilwalkers.Persistence
         /// </summary>
         public List<string> AppliedBoosts { get; set; } = new List<string>();
 
-        /// <summary>Repair a null <see cref="AppliedBoosts"/> back to empty (load validation).</summary>
+        /// <summary>
+        /// Repair a null <see cref="AppliedBoosts"/> back to empty and drop null
+        /// elements (load validation).
+        /// </summary>
         public void CoerceNullCollections()
         {
             if (AppliedBoosts == null)
             {
                 AppliedBoosts = new List<string>();
+            }
+            else
+            {
+                AppliedBoosts.RemoveAll(b => b == null);
             }
         }
     }

@@ -36,6 +36,12 @@ namespace Veilwalkers.Persistence.Tests
             // Simulate a mid-write kill: hold the temp file exclusively locked so the
             // NEXT write fails while producing the temp file — i.e. before the swap
             // ever touches save.dat.
+            //
+            // Windows-host assumption: FileShare.None makes the store's delete/create
+            // of the temp file throw a sharing violation. On a POSIX host the held
+            // file would simply be unlinked and the save would SUCCEED, failing this
+            // test — fine while the Editor/test host is Windows-only; revisit if the
+            // suite ever runs on macOS/Linux CI.
             using (new FileStream(
                 TestSaveFiles.TempPath(_dir), FileMode.Create, FileAccess.Write, FileShare.None))
             {

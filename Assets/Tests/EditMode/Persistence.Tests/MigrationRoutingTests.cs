@@ -60,6 +60,17 @@ namespace Veilwalkers.Persistence.Tests
         }
 
         [Test]
+        public void Out_of_int_range_schemaVersion_throws_SaveCorrupt()
+        {
+            // JTokenType.Integer admits values past int range; the conversion
+            // overflow must classify as corruption (recovery flow), not Failed.
+            TestSaveFiles.WriteCraftedSave(_dir, "{\"schemaVersion\":99999999999}");
+
+            Assert.Throws<SaveCorruptException>(
+                () => _store.LoadAsync().GetAwaiter().GetResult());
+        }
+
+        [Test]
         public void Valid_encryption_but_garbage_json_throws_SaveCorrupt()
         {
             TestSaveFiles.WriteCraftedSave(_dir, "this is not json {{{");

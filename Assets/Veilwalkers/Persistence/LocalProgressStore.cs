@@ -20,10 +20,12 @@ namespace Veilwalkers.Persistence
     /// write to a temp file IN THE SAME DIRECTORY → flush to disk → atomically swap
     /// over <c>save.dat</c>. Same-directory temp guarantees same volume, so the swap
     /// is an atomic rename: a kill before the swap leaves the prior save untouched, a
-    /// kill after leaves the new valid save. All heavy work runs inside
-    /// <c>Task.Run</c>; no UnityEngine API is touched off the main thread. Concurrent
-    /// operations are serialized by a semaphore so two writers can never interleave
-    /// on the temp file.
+    /// kill after leaves the new valid save. Serialization happens on the CALLING
+    /// thread — the caller owns the model, so snapshotting it to JSON before any
+    /// thread hop means a concurrent mutation can never tear an in-flight write;
+    /// encrypt + IO run inside <c>Task.Run</c>, and no UnityEngine API is touched off
+    /// the main thread. Concurrent operations are serialized by a semaphore so two
+    /// writers can never interleave on the temp file.
     /// </para>
     /// </summary>
     public sealed class LocalProgressStore : IProgressStore
@@ -79,10 +81,17 @@ namespace Veilwalkers.Persistence
                 throw new ArgumentNullException(nameof(model));
             }
 
+            // Snapshot to JSON on the calling thread, which owns the model: a
+            // mutation after this line affects the NEXT save, never tears this one.
+            // (Never persist a null collection; always write the current schema.)
+            model.CoerceNullCollections();
+            model.SchemaVersion = SaveMigrations.CurrentVersion;
+            string json = JsonConvert.SerializeObject(model, SaveJson.Settings);
+
             await _ioLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                await Task.Run(() => SaveCore(model)).ConfigureAwait(false);
+                await Task.Run(() => SaveCore(json)).ConfigureAwait(false);
             }
             finally
             {
@@ -149,15 +158,35 @@ namespace Veilwalkers.Persistence
                 throw new SaveCorruptException("Save document has no integer schemaVersion.");
             }
 
-            document = SaveMigrations.Migrate(document, versionToken.Value<int>());
+            int version;
+            try
+            {
+                version = versionToken.Value<int>();
+            }
+            catch (OverflowException ex)
+            {
+                // JTokenType.Integer admits values past int range; that is corruption,
+                // not an unexpected failure — it must reach the recovery flow.
+                throw new SaveCorruptException("Save schemaVersion is out of integer range.", ex);
+            }
+
+            document = SaveMigrations.Migrate(document, version);
 
             SaveModel model;
             try
             {
                 model = document.ToObject<SaveModel>(SaveJson.CreateSerializer());
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (
+                ex is JsonException ||
+                ex is FormatException ||
+                ex is OverflowException ||
+                ex is InvalidCastException)
             {
+                // Json.NET does not wrap exceptions thrown by converters: the
+                // Vector3/Quaternion converters' Value<float?> conversions surface
+                // FormatException/OverflowException/InvalidCastException for
+                // non-numeric components. All of these mean a corrupt document.
                 throw new SaveCorruptException("Save document does not match the save schema.", ex);
             }
 
@@ -171,13 +200,8 @@ namespace Veilwalkers.Persistence
             return model;
         }
 
-        private void SaveCore(SaveModel model)
+        private void SaveCore(string json)
         {
-            // Never persist a null collection, and always write the current schema.
-            model.CoerceNullCollections();
-            model.SchemaVersion = SaveMigrations.CurrentVersion;
-
-            string json = JsonConvert.SerializeObject(model, SaveJson.Settings);
             byte[] blob = AesCrypto.Encrypt(Encoding.UTF8.GetBytes(json));
 
             Directory.CreateDirectory(_directory);
@@ -211,10 +235,11 @@ namespace Veilwalkers.Persistence
             {
                 DeleteIfExists(_tempPath);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                // A locked/undeletable stale temp must not block loading the valid
-                // save; it will be replaced by the next write anyway.
+                // A locked/undeletable stale temp (read-only attribute throws
+                // UnauthorizedAccessException, not IOException) must not block
+                // loading the valid save; it will be replaced by the next write.
                 GameLog.Warn($"Could not clean up stale save temp file: {ex.Message}");
             }
         }

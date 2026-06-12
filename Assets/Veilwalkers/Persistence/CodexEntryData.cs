@@ -24,12 +24,19 @@ namespace Veilwalkers.Persistence
         /// </summary>
         public List<string> VariantFlags { get; set; } = new List<string>();
 
-        /// <summary>Repair a null <see cref="VariantFlags"/> back to empty (load validation).</summary>
+        /// <summary>
+        /// Repair a null <see cref="VariantFlags"/> back to empty and drop null
+        /// elements (load validation).
+        /// </summary>
         public void CoerceNullCollections()
         {
             if (VariantFlags == null)
             {
                 VariantFlags = new List<string>();
+            }
+            else
+            {
+                VariantFlags.RemoveAll(v => v == null);
             }
         }
     }
