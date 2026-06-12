@@ -86,7 +86,7 @@ So that closing the app never loses my Credits or collection.
 
 - [x] **Task 8 — Verify, update story/sprint records, and commit**
   - [x] Zero compile errors on clean reopen; full EditMode suite green; `test-results.xml`/`editor-test.log` deleted before commit (they are NOT gitignored).
-  - [~] **Manual Bootstrap play check (the one path with no EditMode coverage):** enter Play Mode in the Bootstrap scene once and confirm via the Console that GameServices wires + seals and a save file appears under `Application.persistentDataPath`; ask James to run this if the Editor is needed interactively. *(Pending: requires the interactive Editor — James to run; everything automatable is verified headless.)*
+  - [x] **Manual Bootstrap play check (the one path with no EditMode coverage):** enter Play Mode in the Bootstrap scene once and confirm via the Console that GameServices wires + seals and a save file appears under `Application.persistentDataPath`; ask James to run this if the Editor is needed interactively. *(Done 2026-06-12 by James: Console showed "Bootstrap: GameServices wired and sealed." + "SaveService: no save found — created and persisted a fresh default save."; `save.dat` (320 bytes, encrypted binary, no stale .tmp) verified under `AppData/LocalLow/DefaultCompany/VeilwalkersUnity/`.)*
   - [x] All new `.cs`, `.asmdef`, `.unity`, and `.meta` files tracked; no secrets.
   - [x] Commit + push (convention: `Story 1.3: <what>`), update sprint-status. [Source: CLAUDE.md#Working conventions]
 
@@ -219,7 +219,7 @@ claude-fable-5 (Claude Code) — 2026-06-12
 - **Threading:** `ConfigureAwait(false)` on every await in Persistence — no Unity sync-context capture, which is also what lets EditMode tests block with `GetAwaiter().GetResult()` without deadlock. `SaveService.Status`/`Current` published under a lock; events may fire on background threads (UI must marshal — Epic 6). Store serializes ALL file ops (load/save/delete) through one `SemaphoreSlim` so a load's stale-tmp cleanup can never race a concurrent save's live temp file.
 - **Bootstrap scene authored as YAML** (`Assets/Veilwalkers/Scenes/Bootstrap.unity`, minimal: settings blocks + Bootstrap GameObject) with a controlled GUID referenced from `EditorBuildSettings.asset` at **index 0**, SampleScene kept enabled at index 1. Unity imported it cleanly in the headless runs.
 - **`SaveModel` fresh default has `credits = 0`** (asserted in tests) — the 20-credit grant is Story 1.7. `SaveAsync` faults on failure (asserted) so 1.4/1.5 can roll back per AR-8.
-- **[~] Manual Bootstrap play check pending James:** enter Play Mode in the Bootstrap scene, confirm Console shows "Bootstrap: GameServices wired and sealed." + "SaveService: no save found — created and persisted a fresh default save.", and `save.dat` appears under `Application.persistentDataPath`. Everything automatable is verified headless.
+- **Manual Bootstrap play check PASSED (James, 2026-06-12):** Play Mode in the Bootstrap scene logged "Bootstrap: GameServices wired and sealed." then "SaveService: no save found — created and persisted a fresh default save." (an EDM4U analytics info line in between is benign); `save.dat` verified on disk — 320 bytes, encrypted binary, no stale `.tmp`. All story verification is now complete: headless suite 41/41 + the manual runtime path.
 
 ### File List
 
