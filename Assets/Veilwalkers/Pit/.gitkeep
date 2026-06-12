@@ -1,0 +1,4 @@
+# Pit/ — placeable miniature Roman colosseum (The Pit). Post-MVP seam (Epic 7).
+# This folder intentionally has NO .asmdef: an assembly boundary is only created
+# once the Pit has code. See docs/architecture.md#Complete Project Directory Structure
+# ("Pit has no asmdef until it has code"). Keep this folder tracked but empty.

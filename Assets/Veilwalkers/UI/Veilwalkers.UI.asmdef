@@ -1,0 +1,23 @@
+{
+    "name": "Veilwalkers.UI",
+    "rootNamespace": "Veilwalkers.UI",
+    "references": [
+        "Veilwalkers.Core",
+        "Veilwalkers.App",
+        "Veilwalkers.Persistence",
+        "Veilwalkers.Economy",
+        "Veilwalkers.Monsters",
+        "Veilwalkers.AR",
+        "Veilwalkers.Encounter",
+        "Veilwalkers.Billing"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -4,7 +4,7 @@ baseline_commit: 520d352
 
 # Story 1.2: Establish assembly boundaries and composition root
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,39 +42,39 @@ So that the one-way dependency graph is enforced and services resolve from one p
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Create the `Assets/Veilwalkers/` area folders + asmdefs (AC: #1)**
-  - [ ] Create the first-party root `Assets/Veilwalkers/` and one folder per area: `Core/`, `Persistence/`, `Economy/`, `Monsters/` (with `Monsters/Codex/`), `AR/`, `Encounter/`, `Billing/`, `App/`, `UI/`, plus the empty `Pit/` folder. (Codex folds into Monsters; Pit gets **no** asmdef.) [Source: docs/architecture.md#Complete Project Directory Structure]
-  - [ ] Add one `.asmdef` per area named **`Veilwalkers.<Area>`** (e.g., `Veilwalkers.Core.asmdef`, `Veilwalkers.Economy.asmdef`, …). Root namespace for each = `Veilwalkers.<Area>` (namespace mirrors folder path). [Source: docs/architecture.md#File & Project Structure Patterns]
-  - [ ] Wire each asmdef's **Assembly Definition References** to encode ONLY the allowed downward edges (see the explicit reference table in Dev Notes → "Asmdef reference matrix"). Do **not** add upward or sideways references.
-  - [ ] Confirm **no** service asmdef (Core/Persistence/Economy/Monsters/AR/Encounter/Billing) references `Veilwalkers.UI` or `Veilwalkers.App`. [Source: docs/epics.md#Story 1.2]
-  - [ ] Create `Assets/Veilwalkers/Pit/` as a **folder only** (a `.gitkeep` or a placeholder `.md` is fine to keep it tracked) — **NO asmdef**. [Source: docs/architecture.md#Complete Project Directory Structure ("Pit has no asmdef until it has code")]
+- [x] **Task 1 — Create the `Assets/Veilwalkers/` area folders + asmdefs (AC: #1)**
+  - [x] Create the first-party root `Assets/Veilwalkers/` and one folder per area: `Core/`, `Persistence/`, `Economy/`, `Monsters/` (with `Monsters/Codex/`), `AR/`, `Encounter/`, `Billing/`, `App/`, `UI/`, plus the empty `Pit/` folder. (Codex folds into Monsters; Pit gets **no** asmdef.) [Source: docs/architecture.md#Complete Project Directory Structure]
+  - [x] Add one `.asmdef` per area named **`Veilwalkers.<Area>`** (e.g., `Veilwalkers.Core.asmdef`, `Veilwalkers.Economy.asmdef`, …). Root namespace for each = `Veilwalkers.<Area>` (namespace mirrors folder path). [Source: docs/architecture.md#File & Project Structure Patterns]
+  - [x] Wire each asmdef's **Assembly Definition References** to encode ONLY the allowed downward edges (see the explicit reference table in Dev Notes → "Asmdef reference matrix"). Do **not** add upward or sideways references.
+  - [x] Confirm **no** service asmdef (Core/Persistence/Economy/Monsters/AR/Encounter/Billing) references `Veilwalkers.UI` or `Veilwalkers.App`. [Source: docs/epics.md#Story 1.2]
+  - [x] Create `Assets/Veilwalkers/Pit/` as a **folder only** (a `.gitkeep` or a placeholder `.md` is fine to keep it tracked) — **NO asmdef**. [Source: docs/architecture.md#Complete Project Directory Structure ("Pit has no asmdef until it has code")]
 
-- [ ] **Task 2 — Author the shared Core contract types (AC: #2)**
-  - [ ] `Core/Contracts/AnchorToken.cs` — `[Serializable]` value type holding a trackable id (string) + session-relative pose (position/rotation). It must be serializable so `EncounterSnapshot`/`SaveModel` can store it WITHOUT depending upward on AR. (Field shape can be minimal now; later stories fill behavior.) [Source: docs/architecture.md#Architectural Boundaries ("Shared contracts below AR")]
-  - [ ] `Core/Contracts/AnchorRestoreResult.cs` — `enum { Restored, RelocatedToPlane, Failed }`. [Source: docs/epics.md#Story 1.2; docs/architecture.md#Complete Project Directory Structure]
-  - [ ] `Core/Result.cs` — a small typed-result type (success/failure + optional reason) used by the "typed result, never throw for expected failure" convention. [Source: docs/architecture.md#Communication Patterns]
-  - [ ] `Core/SpendResult.cs` — `SpendResult { bool Success; int NewBalance; <reason> FailureReason }`. Callers check `Success`; this type NEVER throws for "can't afford". (Story 1.4 consumes it; define the shape now.) [Source: docs/epics.md#Story 1.2; docs/architecture.md#Communication Patterns]
-  - [ ] `Core/IClock.cs` + `Core/SystemClock.cs` — the time seam. No direct `Time.time`/`DateTime.Now` in logic; logic reads `IClock`. `SystemClock` is the production impl. [Source: docs/architecture.md#Complete Project Directory Structure ("IClock.cs / SystemClock.cs — time seam")]
-  - [ ] `Core/GameLog.cs` — logging wrapper with levels **Debug/Info/Warn/Error** (wraps `Debug.Log*` once; the rest of the codebase calls `GameLog`, never raw `Debug.Log`). [Source: docs/architecture.md#Process Patterns; docs/architecture.md#Enforcement Guidelines]
-  - [ ] One **public type per file**, file name == type name. [Source: docs/architecture.md#File & Project Structure Patterns]
+- [x] **Task 2 — Author the shared Core contract types (AC: #2)**
+  - [x] `Core/Contracts/AnchorToken.cs` — `[Serializable]` value type holding a trackable id (string) + session-relative pose (position/rotation). It must be serializable so `EncounterSnapshot`/`SaveModel` can store it WITHOUT depending upward on AR. (Field shape can be minimal now; later stories fill behavior.) [Source: docs/architecture.md#Architectural Boundaries ("Shared contracts below AR")]
+  - [x] `Core/Contracts/AnchorRestoreResult.cs` — `enum { Restored, RelocatedToPlane, Failed }`. [Source: docs/epics.md#Story 1.2; docs/architecture.md#Complete Project Directory Structure]
+  - [x] `Core/Result.cs` — a small typed-result type (success/failure + optional reason) used by the "typed result, never throw for expected failure" convention. [Source: docs/architecture.md#Communication Patterns]
+  - [x] `Core/SpendResult.cs` — `SpendResult { bool Success; int NewBalance; <reason> FailureReason }`. Callers check `Success`; this type NEVER throws for "can't afford". (Story 1.4 consumes it; define the shape now.) [Source: docs/epics.md#Story 1.2; docs/architecture.md#Communication Patterns]
+  - [x] `Core/IClock.cs` + `Core/SystemClock.cs` — the time seam. No direct `Time.time`/`DateTime.Now` in logic; logic reads `IClock`. `SystemClock` is the production impl. [Source: docs/architecture.md#Complete Project Directory Structure ("IClock.cs / SystemClock.cs — time seam")]
+  - [x] `Core/GameLog.cs` — logging wrapper with levels **Debug/Info/Warn/Error** (wraps `Debug.Log*` once; the rest of the codebase calls `GameLog`, never raw `Debug.Log`). [Source: docs/architecture.md#Process Patterns; docs/architecture.md#Enforcement Guidelines]
+  - [x] One **public type per file**, file name == type name. [Source: docs/architecture.md#File & Project Structure Patterns]
 
-- [ ] **Task 3 — Build the composition root `GameServices` + `ServicesNotReadyException` (AC: #3)**
-  - [ ] `Core/GameServices.cs` — a wiring table (type → instance) that is **populated once** and **read-only thereafter**. Provide a wiring API callable only at Bootstrap (e.g., `Register<T>(impl)` / a `Wire(...)`/`MarkReady()` finalizer) and a read API `Get<T>()`. [Source: docs/architecture.md#Architectural Boundaries ("populated ONCE … read-only thereafter")]
-  - [ ] `Get<T>()` throws **`ServicesNotReadyException`** (a clear, named exception — define it, e.g. in Core) if called before wiring is complete — **never return null**. [Source: docs/epics.md#Story 1.2; docs/epics.md#AR-4; docs/architecture.md#Services-not-ready race]
-  - [ ] Add `GameServices.ResetForTests()` to clear the table for test isolation, plus a path for per-test override registration. [Source: docs/epics.md#Story 1.2; docs/architecture.md#Architectural Boundaries ("ResetForTests() + per-test override registration")]
-  - [ ] **Locator confinement:** `GameServices` lives in Core but the *rule* is enforced by convention — only **App/Bootstrap** wires it and only **MonoBehaviours/UI** read it. Pure-logic areas (Economy, Encounter, Monsters, Persistence, Billing) take dependencies via **constructor/`Init(...)` injection** and must NOT call `GameServices.Get<T>()`. Add a short XML-doc comment on `GameServices` stating this rule. [Source: docs/architecture.md#Architectural Boundaries ("Service access / locator rule")]
-  - [ ] `App/Bootstrap.cs` — a minimal Bootstrap MonoBehaviour stub that is the single place that wires `GameServices`. It may be a near-empty shell now (no real services exist yet to wire — they arrive in 1.3+); its job in this story is to be the *named, single* composition entry point and to prove the wire-once → read pattern. Do NOT have Bootstrap own the AR session. [Source: docs/architecture.md#Complete Project Directory Structure; docs/architecture.md#AppStateMachine / Services-not-ready race]
+- [x] **Task 3 — Build the composition root `GameServices` + `ServicesNotReadyException` (AC: #3)**
+  - [x] `Core/GameServices.cs` — a wiring table (type → instance) that is **populated once** and **read-only thereafter**. Provide a wiring API callable only at Bootstrap (e.g., `Register<T>(impl)` / a `Wire(...)`/`MarkReady()` finalizer) and a read API `Get<T>()`. [Source: docs/architecture.md#Architectural Boundaries ("populated ONCE … read-only thereafter")]
+  - [x] `Get<T>()` throws **`ServicesNotReadyException`** (a clear, named exception — define it, e.g. in Core) if called before wiring is complete — **never return null**. [Source: docs/epics.md#Story 1.2; docs/epics.md#AR-4; docs/architecture.md#Services-not-ready race]
+  - [x] Add `GameServices.ResetForTests()` to clear the table for test isolation, plus a path for per-test override registration. [Source: docs/epics.md#Story 1.2; docs/architecture.md#Architectural Boundaries ("ResetForTests() + per-test override registration")]
+  - [x] **Locator confinement:** `GameServices` lives in Core but the *rule* is enforced by convention — only **App/Bootstrap** wires it and only **MonoBehaviours/UI** read it. Pure-logic areas (Economy, Encounter, Monsters, Persistence, Billing) take dependencies via **constructor/`Init(...)` injection** and must NOT call `GameServices.Get<T>()`. Add a short XML-doc comment on `GameServices` stating this rule. [Source: docs/architecture.md#Architectural Boundaries ("Service access / locator rule")]
+  - [x] `App/Bootstrap.cs` — a minimal Bootstrap MonoBehaviour stub that is the single place that wires `GameServices`. It may be a near-empty shell now (no real services exist yet to wire — they arrive in 1.3+); its job in this story is to be the *named, single* composition entry point and to prove the wire-once → read pattern. Do NOT have Bootstrap own the AR session. [Source: docs/architecture.md#Complete Project Directory Structure; docs/architecture.md#AppStateMachine / Services-not-ready race]
 
-- [ ] **Task 4 — Author `Architecture.Tests` acyclicity test (AC: #3)**
-  - [ ] Create `Assets/Tests/EditMode/Architecture.Tests/` with its own `Veilwalkers.Architecture.Tests.asmdef` (EditMode test asmdef; references the Unity Test Framework + the Veilwalkers assemblies it needs to inspect). [Source: docs/architecture.md#Complete Project Directory Structure; docs/architecture.md#File & Project Structure Patterns ("Tests … own .asmdef")]
-  - [ ] Write a test that walks the compiled assemblies via `UnityEditor.Compilation.CompilationPipeline.GetAssemblies()` and **fails** if any Veilwalkers asmdef references a **higher tier** in the graph `Core ← {Persistence, Economy, Monsters} ← {AR, Encounter, Billing} ← App ← UI`. [Source: docs/epics.md#Story 1.2; docs/epics.md#AR-5; docs/epics.md#AR-20; docs/architecture.md#Architectural Boundaries]
-  - [ ] Add a focused unit test for the locator: `Get<T>()` before wiring throws `ServicesNotReadyException`; after wiring returns the registered instance; `ResetForTests()` returns it to the unready state. [Source: docs/epics.md#AR-4]
-  - [ ] **Do NOT** author the `MonsterDatabase.Count == 67` test here — that lands with Epic 2 (no MonsterDatabase exists yet). Only the **acyclicity** assertion belongs to this story. [Source: docs/epics.md#AR-20 ("acyclicity" is the Epic 1 slice); docs/epics.md#Epic 2 (Count==67)]
+- [x] **Task 4 — Author `Architecture.Tests` acyclicity test (AC: #3)**
+  - [x] Create `Assets/Tests/EditMode/Architecture.Tests/` with its own `Veilwalkers.Architecture.Tests.asmdef` (EditMode test asmdef; references the Unity Test Framework + the Veilwalkers assemblies it needs to inspect). [Source: docs/architecture.md#Complete Project Directory Structure; docs/architecture.md#File & Project Structure Patterns ("Tests … own .asmdef")]
+  - [x] Write a test that walks the compiled assemblies via `UnityEditor.Compilation.CompilationPipeline.GetAssemblies()` and **fails** if any Veilwalkers asmdef references a **higher tier** in the graph `Core ← {Persistence, Economy, Monsters} ← {AR, Encounter, Billing} ← App ← UI`. [Source: docs/epics.md#Story 1.2; docs/epics.md#AR-5; docs/epics.md#AR-20; docs/architecture.md#Architectural Boundaries]
+  - [x] Add a focused unit test for the locator: `Get<T>()` before wiring throws `ServicesNotReadyException`; after wiring returns the registered instance; `ResetForTests()` returns it to the unready state. [Source: docs/epics.md#AR-4]
+  - [x] **Do NOT** author the `MonsterDatabase.Count == 67` test here — that lands with Epic 2 (no MonsterDatabase exists yet). Only the **acyclicity** assertion belongs to this story. [Source: docs/epics.md#AR-20 ("acyclicity" is the Epic 1 slice); docs/epics.md#Epic 2 (Count==67)]
 
-- [ ] **Task 5 — Verify, build-gate, and commit**
-  - [ ] Reopen the project clean: **zero compile errors**, all assemblies compile, and the EditMode `Architecture.Tests` **pass** (Test Runner → EditMode). [Source: docs/architecture.md#Tests]
-  - [ ] Sanity-check the dependency graph in the Editor (each asmdef inspector shows only the allowed references; no service asmdef lists `Veilwalkers.UI`/`Veilwalkers.App`).
-  - [ ] Confirm all new `.cs`, `.asmdef`, and `.meta` files are tracked (asmdefs and their `.meta` are committed; generated `.csproj`/`.sln` remain gitignored). [Source: CLAUDE.md#Working conventions; docs/architecture.md#Complete Project Directory Structure]
+- [x] **Task 5 — Verify, build-gate, and commit**
+  - [x] Reopen the project clean: **zero compile errors**, all assemblies compile, and the EditMode `Architecture.Tests` **pass** (Test Runner → EditMode). [Source: docs/architecture.md#Tests]
+  - [x] Sanity-check the dependency graph in the Editor (each asmdef inspector shows only the allowed references; no service asmdef lists `Veilwalkers.UI`/`Veilwalkers.App`).
+  - [x] Confirm all new `.cs`, `.asmdef`, and `.meta` files are tracked (asmdefs and their `.meta` are committed; generated `.csproj`/`.sln` remain gitignored). [Source: CLAUDE.md#Working conventions; docs/architecture.md#Complete Project Directory Structure]
   - [ ] Commit + push at end of session (per CLAUDE.md). [Source: CLAUDE.md#Working conventions]
 
 ## Dev Notes
@@ -193,8 +193,71 @@ No `project-context.md` exists in the repo (the BMM `persistent_facts` glob `**/
 
 ### Agent Model Used
 
+claude-opus-4-8 (Claude Code, dev-story workflow)
+
 ### Debug Log References
+
+- EditMode test run (Unity 2022.3.62f3 batch mode): `editor-test.log` + `test-results.xml` (NUnit). Command: `Unity.exe -batchmode -runTests -testPlatform EditMode -nographics`.
+
+### Implementation Plan
+
+- **Task 1 (asmdefs):** authored 9 `Veilwalkers.<Area>.asmdef` files with name-based (not GUID) references encoding only the allowed downward edges from the Dev Notes reference matrix. Economy/Persistence kept at Core-only for this story (forward Economy→Persistence edge deferred to 1.4 as documented). `Pit/` left asmdef-free with a `.gitkeep`.
+- **Task 2 (Core contracts):** one public type per file. Split `SpendResult`'s reason enum into its own `SpendFailureReason.cs` to honor the one-type-per-file rule. `AnchorToken` is `[Serializable]` and uses only UnityEngine math types (no AR-Foundation), keeping Core below AR.
+- **Task 3 (composition root):** `GameServices` static wiring table — `Register<T>` (pre-ready only) → `MarkReady()` (seals) → `Get<T>()` (throws `ServicesNotReadyException` before ready, `KeyNotFoundException` for unregistered). `ResetForTests()` clears state. XML-doc states the locator-confinement rule. `Bootstrap` MonoBehaviour is the single, near-empty wiring entry point.
+- **Task 4 (Architecture.Tests):** Editor-only test asmdef. Acyclicity test ranks tiers (Core=0 … UI=4) and fails on any strictly-upward Veilwalkers→Veilwalkers reference via `CompilationPipeline.GetAssemblies`. Locator tests cover throws-before-ready / returns-after-wire / reset.
 
 ### Completion Notes List
 
+- **All 3 ACs satisfied; all 5 tasks complete.** Validated by a headless Unity 2022.3.62f3 EditMode run: clean compile across all assemblies, **8/8 tests passed, 0 failed**.
+- **AC-1 (one-way acyclic graph):** 9 `Veilwalkers.<Area>.asmdef` files created with name-based references encoding only the allowed downward edges. `No_service_assembly_references_App_or_UI` and `No_Veilwalkers_assembly_references_a_higher_tier` both pass. `Pit/` has NO asmdef (folder kept via `.gitkeep`). Economy/Persistence kept at **Core-only** for this story; the forward Economy→Persistence (interface) edge is deferred to 1.4 as the Dev Notes prescribe — the acyclicity test ranks tiers and only forbids *strictly-upward* edges, so that future same-tier edge stays legal.
+- **AC-2 (contracts in Core, below AR):** `AnchorToken` (`[Serializable]`, UnityEngine math only — no AR-Foundation types), `AnchorRestoreResult { Restored, RelocatedToPlane, Failed }`, `Result`, `SpendResult` (+ `SpendFailureReason` extracted to its own file for one-type-per-file), `IClock`/`SystemClock`, `GameLog (Debug/Info/Warn/Error)`.
+- **AC-3 (composition root):** `GameServices` is wire-once (`Register<T>` → `MarkReady()` seals) and read-only after; `Get<T>()` throws `ServicesNotReadyException` (never null) before wiring and `KeyNotFoundException` for an unregistered type after; `ResetForTests()` restores the unready state. Locator-confinement rule documented in XML-doc. `Bootstrap` MonoBehaviour is the single, near-empty wiring entry point (no AR session, no AppStateMachine — those are later stories).
+- **Key design decision (deviation from the literal task wording, same outcome):** Task 4 originally implied walking `CompilationPipeline.GetAssemblies()`. That silently skips assemblies with zero `.cs` files — Unity does not emit them — which would (a) have made the acyclicity check vacuous for the empty service assemblies and (b) produced a false "missing assembly" failure (it did, on the first run: 6/7). The test now reads the **`.asmdef` JSON on disk** via `AssetDatabase`, which is the authoritative declaration of the graph and validates all 9 boundaries regardless of whether code exists yet. This is strictly stronger and is the correct long-term guard.
+- **Expected, benign log notices:** Unity logs "…will not be compiled, because it has no scripts associated with it" for the still-empty service assemblies (Billing/UI/Persistence/Monsters/AR/Economy/Encounter). This is intended — the empty assembly is the boundary; code arrives in later stories.
+- **Not built here (correctly deferred):** SaveService/CreditService/ProgressionService/Monster DB/AR/Encounter/Billing logic, `EconomyConfig`, `AppStateMachine`, and the `MonsterDatabase.Count == 67` test (Epic 2). Only the asmdef *homes* + the AC-named types exist now.
+- **References authored by name, not GUID:** Unity preserved the name-based `references` arrays on import (verified on disk), so no GUID churn.
+
 ### File List
+
+**New — production code (`Assets/Veilwalkers/`):**
+
+- `Assets/Veilwalkers/Core/Veilwalkers.Core.asmdef`
+- `Assets/Veilwalkers/Core/Contracts/AnchorToken.cs`
+- `Assets/Veilwalkers/Core/Contracts/AnchorRestoreResult.cs`
+- `Assets/Veilwalkers/Core/Result.cs`
+- `Assets/Veilwalkers/Core/SpendFailureReason.cs`
+- `Assets/Veilwalkers/Core/SpendResult.cs`
+- `Assets/Veilwalkers/Core/IClock.cs`
+- `Assets/Veilwalkers/Core/SystemClock.cs`
+- `Assets/Veilwalkers/Core/GameLog.cs`
+- `Assets/Veilwalkers/Core/ServicesNotReadyException.cs`
+- `Assets/Veilwalkers/Core/GameServices.cs`
+- `Assets/Veilwalkers/Persistence/Veilwalkers.Persistence.asmdef`
+- `Assets/Veilwalkers/Economy/Veilwalkers.Economy.asmdef`
+- `Assets/Veilwalkers/Monsters/Veilwalkers.Monsters.asmdef` (+ empty `Monsters/Codex/` folder)
+- `Assets/Veilwalkers/AR/Veilwalkers.AR.asmdef`
+- `Assets/Veilwalkers/Encounter/Veilwalkers.Encounter.asmdef`
+- `Assets/Veilwalkers/Billing/Veilwalkers.Billing.asmdef`
+- `Assets/Veilwalkers/App/Veilwalkers.App.asmdef`
+- `Assets/Veilwalkers/App/Bootstrap.cs`
+- `Assets/Veilwalkers/UI/Veilwalkers.UI.asmdef`
+- `Assets/Veilwalkers/Pit/.gitkeep` (folder only — **no asmdef**)
+
+**New — tests (`Assets/Tests/`):**
+
+- `Assets/Tests/EditMode/Architecture.Tests/Veilwalkers.Architecture.Tests.asmdef`
+- `Assets/Tests/EditMode/Architecture.Tests/AcyclicDependencyTests.cs`
+- `Assets/Tests/EditMode/Architecture.Tests/GameServicesTests.cs`
+
+_(Every `.cs`/`.asmdef` above has a committed `.meta`; folder `.meta` files for `Assets/Veilwalkers`, each area folder, `Core/Contracts`, `Monsters/Codex`, `Assets/Tests`, `EditMode`, and `Architecture.Tests` are also committed. Generated `Library/`, `obj/`, `*.csproj`, `*.sln` remain gitignored.)_
+
+**Modified:**
+
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (story 1-2 → in-progress → review)
+- `_bmad-output/implementation-artifacts/1-2-establish-assembly-boundaries-and-composition-root.md` (this file)
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-12 | Implemented Story 1.2: 9 area asmdefs (one-way acyclic graph), Core contract/seam types, `GameServices` composition root + `ServicesNotReadyException` + `Bootstrap`, and EditMode `Architecture.Tests` (acyclicity + locator). Validated via headless Unity batch EditMode run: 8/8 tests pass, clean compile. Status → review. |

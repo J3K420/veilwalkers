@@ -1,0 +1,19 @@
+{
+    "name": "Veilwalkers.Encounter",
+    "rootNamespace": "Veilwalkers.Encounter",
+    "references": [
+        "Veilwalkers.Core",
+        "Veilwalkers.Economy",
+        "Veilwalkers.Monsters",
+        "Veilwalkers.AR"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

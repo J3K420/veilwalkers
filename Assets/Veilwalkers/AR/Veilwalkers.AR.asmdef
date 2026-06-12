@@ -1,0 +1,16 @@
+{
+    "name": "Veilwalkers.AR",
+    "rootNamespace": "Veilwalkers.AR",
+    "references": [
+        "Veilwalkers.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
