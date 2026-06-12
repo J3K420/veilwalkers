@@ -1,0 +1,10 @@
+# Assets/Plugins/Android/ — destination for Android Gradle templates managed by the
+# Google External Dependency Manager (EDM4U), bundled with ARCore Extensions.
+#
+# This folder must EXIST so EDM's auto-resolve can copy mainTemplate.gradle here
+# (a missing folder throws DirectoryNotFoundException on every Android resolve).
+#
+# The generated files (mainTemplate.gradle, gradleTemplate.properties, etc.) are
+# intentionally NOT committed as part of Story 1.2 — Android build config belongs to
+# the release-gate work (AR-21). Let Unity/EDM regenerate them from the pinned
+# packages. Keep this folder tracked but otherwise empty.
