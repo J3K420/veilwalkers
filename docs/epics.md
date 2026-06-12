@@ -75,7 +75,7 @@ NFR-6: Offline tolerance — core single-player loop functions without connectiv
 - **AR-18 (IClock seam):** No direct `Time.time`/`DateTime.Now` in logic; `IClock`/`SystemClock` for daily reward, ad cap, day buckets — enables deterministic tests.
 - **AR-19 (Error/logging standard):** Single `GameLog` wrapper (Debug/Info/Warn/Error); no raw `Debug.Log` in shipping logic. Long ops (save, billing, AR init) expose status enum + start/finish events; no silent main-thread blocking.
 - **AR-20 (Architecture tests):** `Architecture.Tests` asserts asmdef acyclicity and `MonsterDatabase.Count == 67` lore constraint; charge atomicity test (force IProgressStore.Save throw, assert charge intact); save tamper test (corrupt save → throw, player-facing recovery, never silent wipe).
-- **AR-21 (Build/deploy):** Android App Bundle (.aab), IL2CPP, ARM64, AR Required; signing via gitignored keystore + keystore.properties. Google Play tracks (internal → closed → soft launch). Secrets (keystores, google-services.json, keystore.properties, billing keys) stay gitignored.
+- **AR-21 (Build/deploy):** Android App Bundle (.aab), IL2CPP, ARM64, AR Required; signing via gitignored keystore + keystore.properties. Google Play tracks (internal → closed → soft launch). Secrets (keystores, google-services.json, keystore.properties, billing keys) stay gitignored. _Build-gate prerequisites accumulated during foundation work (target SDK pin, real bundle ID, .aab output toggle, and the EDM4U Android Gradle templates under `Assets/Plugins/Android/`) are tracked in `_bmad-output/implementation-artifacts/deferred-work.md` — settle them here._
 
 **Architecture edge cases (become ACs / test cases):**
 - Exact-balance spend (balance == cost → 0) succeeds; assert `balance >= cost`.
