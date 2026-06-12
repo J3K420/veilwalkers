@@ -75,7 +75,7 @@ So that the one-way dependency graph is enforced and services resolve from one p
   - [x] Reopen the project clean: **zero compile errors**, all assemblies compile, and the EditMode `Architecture.Tests` **pass** (Test Runner → EditMode). [Source: docs/architecture.md#Tests]
   - [x] Sanity-check the dependency graph in the Editor (each asmdef inspector shows only the allowed references; no service asmdef lists `Veilwalkers.UI`/`Veilwalkers.App`).
   - [x] Confirm all new `.cs`, `.asmdef`, and `.meta` files are tracked (asmdefs and their `.meta` are committed; generated `.csproj`/`.sln` remain gitignored). [Source: CLAUDE.md#Working conventions; docs/architecture.md#Complete Project Directory Structure]
-  - [ ] Commit + push at end of session (per CLAUDE.md). [Source: CLAUDE.md#Working conventions]
+  - [x] Commit + push at end of session (per CLAUDE.md). [Source: CLAUDE.md#Working conventions]
 
 ## Dev Notes
 
