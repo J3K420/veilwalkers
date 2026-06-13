@@ -43,7 +43,7 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Foundation — Project, Persistence & Economy Core
-  epic-1: in-progress
+  epic-1: done
   1-1-initialize-unity-ar-project-with-pinned-packages: done
   1-2-establish-assembly-boundaries-and-composition-root: done
   1-3-persist-player-state-with-encrypted-atomic-local-save: done
@@ -53,7 +53,7 @@ development_status:
   1-7-grant-20-starting-credits-on-first-launch: done
   1-8-claim-a-daily-free-credit-reward: done
   1-9-reserve-the-ad-reward-and-telemetry-seams-stubs: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # Epic 2: Monster Codex & Collection
   epic-2: backlog
