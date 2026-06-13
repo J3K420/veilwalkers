@@ -56,8 +56,8 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Monster Codex & Collection
-  epic-2: backlog
-  2-1-define-monster-data-and-the-ordered-rarity-model: backlog
+  epic-2: in-progress
+  2-1-define-monster-data-and-the-ordered-rarity-model: done
   2-2-register-the-67-monster-database-with-mvp-content: backlog
   2-3-read-and-persist-codex-collection-state: backlog
   2-4-browse-the-67-grid-with-hybrid-gradual-reveal: backlog
