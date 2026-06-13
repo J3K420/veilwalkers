@@ -10,10 +10,19 @@
 # Those files are never touched by the installer.
 # ─────────────────────────────────────────────────────────────────
 
+[core]
+project_name = "veilwalkers"
+document_output_language = "English"
+output_folder = "_bmad-output"
+
 [modules.bmm]
-planning_artifacts = "docs"
-implementation_artifacts = "{project-root}/{output_folder}/implementation-artifacts"
-project_knowledge = "docs"
+planning_artifacts = "{project-root}/docs"
+implementation_artifacts = "{project-root}/_bmad-output/implementation-artifacts"
+project_knowledge = "{project-root}/docs"
+
+[modules.bmb]
+bmad_builder_output_folder = "{project-root}/skills"
+bmad_builder_reports = "{project-root}/skills/reports"
 
 [agents.bmad-agent-analyst]
 module = "bmm"
@@ -62,6 +71,3 @@ name = "Amelia"
 title = "Senior Software Engineer"
 icon = "💻"
 description = "Test-first discipline (red, green, refactor), 100% pass before review, no fluff all precision. Speaks like a terminal prompt: exact file paths, AC IDs, and commit-message brevity — every statement citable."
-
-[core]
-project_name = "Veilwalkers"
