@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using UnityEngine;
 using Veilwalkers.Core;
+using Veilwalkers.Economy;
 using Veilwalkers.Persistence;
 
 namespace Veilwalkers.App
@@ -76,10 +77,12 @@ namespace Veilwalkers.App
                 var clock = new SystemClock();
                 var progressStore = new LocalProgressStore(Application.persistentDataPath);
                 var saveService = new SaveService(progressStore);
+                var creditService = new CreditService(saveService);
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);
+                GameServices.Register<ICreditService>(creditService);
 
                 GameServices.MarkReady();
                 GameLog.Info("Bootstrap: GameServices wired and sealed.");
@@ -96,6 +99,12 @@ namespace Veilwalkers.App
             // but the fault MUST be observed so a load failure never dies as an
             // unobserved task exception. Resolve via Get<> so the registered instance
             // is always the one initialized.
+            //
+            // Because the load is fire-and-forgotten, ICreditService is resolvable
+            // BEFORE the save model is loaded; any credit call in that window throws
+            // InvalidOperationException by design. No gameplay caller exists yet —
+            // Epic 4/6 own call ordering (Bootstrap.LoadPhase / AppStateMachine,
+            // AR-14); do not build staging here.
             GameServices.Get<SaveService>().InitializeAsync().ContinueWith(
                 task => GameLog.Error(
                     "Bootstrap: SaveService.InitializeAsync faulted: " +

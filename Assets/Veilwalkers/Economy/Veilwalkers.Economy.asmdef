@@ -2,7 +2,8 @@
     "name": "Veilwalkers.Economy",
     "rootNamespace": "Veilwalkers.Economy",
     "references": [
-        "Veilwalkers.Core"
+        "Veilwalkers.Core",
+        "Veilwalkers.Persistence"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

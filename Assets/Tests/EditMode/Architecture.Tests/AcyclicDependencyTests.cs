@@ -36,12 +36,13 @@ namespace Veilwalkers.Architecture.Tests
         // The allowed-edge matrix from the Story 1.2 Dev Notes: each assembly maps to
         // the ONLY Veilwalkers assemblies it may reference. Every legal edge points
         // toward Core; anything not listed here is forbidden (upward AND sideways).
-        // Story 1.4 is expected to add "Veilwalkers.Persistence" to Economy's row.
+        // Story 1.4 added "Veilwalkers.Persistence" to Economy's row (the credit
+        // ledger persists through SaveService).
         private static readonly Dictionary<string, string[]> AllowedReferences = new Dictionary<string, string[]>
         {
             { "Veilwalkers.Core", Array.Empty<string>() },
             { "Veilwalkers.Persistence", new[] { "Veilwalkers.Core" } },
-            { "Veilwalkers.Economy", new[] { "Veilwalkers.Core" } },
+            { "Veilwalkers.Economy", new[] { "Veilwalkers.Core", "Veilwalkers.Persistence" } },
             { "Veilwalkers.Monsters", new[] { "Veilwalkers.Core" } },
             { "Veilwalkers.AR", new[] { "Veilwalkers.Core" } },
             {
