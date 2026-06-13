@@ -124,12 +124,43 @@ namespace Veilwalkers.App
                 var dailyRewardService = new DailyRewardService(
                     saveService, economyMutationLock, clock, _economyConfig);
 
+                // Local telemetry seam (Story 1.9, AR-15): a SEPARATE telemetry.json
+                // (capped ring, plaintext — a tester-inspectable diagnostic, distinct from
+                // the encrypted save) behind the swappable ITelemetrySink/ITelemetryStore.
+                // The retention cap is read from EconomyConfig HERE and injected as an int —
+                // the store does not reference Economy.
+                var telemetryStore = new LocalTelemetryStore(
+                    Application.persistentDataPath, clock, _economyConfig.TelemetryRetentionDays);
+                var telemetrySink = new LocalTelemetrySink(telemetryStore, clock);
+
+                // OQ-4 ad-reward seam (Story 1.9, AR-17): GrantRewardAsync grants one
+                // low-tier charge via Progression (never Credits/XP), capped per UTC day.
+                // Constructed-but-unregistered: no caller exists yet (ads are not built),
+                // but constructing it proves the wiring and fails fast on a bad AdDailyCap.
+                var adHook = new AdHook(
+                    progressionService, saveService, economyMutationLock, clock,
+                    _economyConfig.AdDailyCap);
+
+                // Write-once first-zero-credit recorder (Story 1.9, AR-15): the one
+                // telemetry scalar that lives in SaveModel. Constructed-but-unregistered —
+                // the call site (a spend to zero) is later-epic work.
+                var firstZeroCreditRecorder = new FirstZeroCreditRecorder(
+                    saveService, economyMutationLock, clock);
+
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);
                 GameServices.Register<ICreditService>(creditService);
                 GameServices.Register<IProgressionService>(progressionService);
                 GameServices.Register<IDailyRewardService>(dailyRewardService);
+                GameServices.Register<ITelemetryStore>(telemetryStore);
+                GameServices.Register<ITelemetrySink>(telemetrySink);
+
+                // adHook + firstZeroCreditRecorder are intentionally not registered (no
+                // resolver yet); keep references so the constructors run (wiring proof) and
+                // the locals are not flagged unused.
+                _ = adHook;
+                _ = firstZeroCreditRecorder;
 
                 GameServices.MarkReady();
                 GameLog.Info("Bootstrap: GameServices wired and sealed.");
