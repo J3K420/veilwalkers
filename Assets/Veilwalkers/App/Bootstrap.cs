@@ -77,6 +77,11 @@ namespace Veilwalkers.App
                 return;
             }
 
+            // Hoisted to method scope so the post-load continuation (below) can hand the
+            // shared lock to FirstLaunchGrant. The lock is not a registered service, so it
+            // is captured rather than resolved via GameServices.Get<>().
+            SaveMutationLock economyMutationLock = null;
+
             try
             {
                 // Construct first (see class doc: failures here leave the locator
@@ -90,7 +95,7 @@ namespace Veilwalkers.App
                 // independent locks would let a credit spend and a charge consume
                 // interleave and durably persist each other's uncommitted deltas
                 // (see SaveMutationLock). Construct once, inject into both services.
-                var economyMutationLock = new SaveMutationLock();
+                economyMutationLock = new SaveMutationLock();
                 var creditService = new CreditService(saveService, economyMutationLock);
 
                 // Progression rules come from the tuned EconomyConfig asset (Story 1.6):
@@ -128,20 +133,38 @@ namespace Veilwalkers.App
             }
 
             // Fire-and-forget is acceptable for now (awaited boot staging is AR-14),
-            // but the fault MUST be observed so a load failure never dies as an
-            // unobserved task exception. Resolve via Get<> so the registered instance
-            // is always the one initialized.
+            // but every fault MUST be observed so a load/grant failure never dies as an
+            // unobserved task exception. Resolve via Get<> so the registered instances
+            // are always the ones initialized.
             //
             // Because the load is fire-and-forgotten, ICreditService is resolvable
             // BEFORE the save model is loaded; any credit call in that window throws
-            // InvalidOperationException by design. No gameplay caller exists yet —
-            // Epic 4/6 own call ordering (Bootstrap.LoadPhase / AppStateMachine,
-            // AR-14); do not build staging here.
+            // InvalidOperationException by design. Epic 4/6 own general call ordering
+            // (Bootstrap.LoadPhase / AppStateMachine, AR-14); do not build staging here.
+            // The ONE post-load caller wired today is the Story 1.7 first-launch grant,
+            // chained onto a SUCCESSFUL load below (FirstLaunchGrant no-ops on a corrupt
+            // save's null model, so a non-faulted-but-corrupt load is safe too).
             GameServices.Get<SaveService>().InitializeAsync().ContinueWith(
-                task => GameLog.Error(
-                    "Bootstrap: SaveService.InitializeAsync faulted: " +
-                    task.Exception?.GetBaseException()),
-                TaskContinuationOptions.OnlyOnFaulted);
+                loadTask =>
+                {
+                    if (loadTask.IsFaulted)
+                    {
+                        GameLog.Error(
+                            "Bootstrap: SaveService.InitializeAsync faulted: " +
+                            loadTask.Exception?.GetBaseException());
+                        return;
+                    }
+
+                    var firstLaunchGrant = new FirstLaunchGrant(
+                        GameServices.Get<SaveService>(),
+                        GameServices.Get<ICreditService>(),
+                        economyMutationLock);
+                    firstLaunchGrant.RunAsync().ContinueWith(
+                        grantTask => GameLog.Warn(
+                            "Bootstrap: first-launch grant faulted (will retry next launch): " +
+                            grantTask.Exception?.GetBaseException()),
+                        TaskContinuationOptions.OnlyOnFaulted);
+                });
         }
     }
 }

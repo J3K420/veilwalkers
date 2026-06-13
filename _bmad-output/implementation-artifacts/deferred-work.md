@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 1-7-grant-20-starting-credits-on-first-launch (2026-06-13)
+
+- **No re-entrancy / in-flight guard on `FirstLaunchGrant.RunAsync`** — Two concurrent `RunAsync` calls could both observe `StartingCreditsGranted == false` before either persists the marker and double-grant. Not reachable today: the sole caller is Bootstrap's post-load continuation, which runs exactly once per boot; the marker write is now serialized under the shared `SaveMutationLock`, but the read-decide-grant span as a whole is not guarded against a second concurrent caller. Deferred reason: there is no second caller, and adding an in-flight guard (or making the grant a one-shot) is best designed alongside AR-14 awaited boot staging (Epic 3/6) when call ordering is formalized — premature here. Owner: AR-14 / whenever a second caller appears. [Assets/Veilwalkers/App/FirstLaunchGrant.cs]
+
 ## Deferred from: code review of 1-6-configure-economy-values-data-drivenly (2026-06-13)
 
 - **No overflow / upper-bound check on `EconomyConfig._levelXpThresholds` at asset-edit time** — A designer can set a threshold near `int.MaxValue`; `BuildProgressionRules` passes it to the `ProgressionRules` ctor, which validates strictly-increasing but not magnitude. The overflow then surfaces at runtime in `ProgressionService.AddXpAsync`'s `checked` arithmetic (thrown + logged, never silent) — the documented contract. Deferred reason: `BuildProgressionRules` deliberately does not re-validate (story deviation #4, single validation source = the ctor), and 1.6's scope is the data-driven plumbing, not balancing oversight. Owner: a future OQ-9 balancing / economy-oversight story (could add an asset-edit-time range warning to `OnValidate`). [Assets/Veilwalkers/Economy/EconomyConfig.cs]

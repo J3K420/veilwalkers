@@ -35,6 +35,16 @@ namespace Veilwalkers.Persistence
         public int Credits { get; set; }
 
         /// <summary>
+        /// Write-once first-launch marker (Story 1.7): false on a fresh model, set true
+        /// by <c>FirstLaunchGrant</c> after the 20-credit starting grant lands, so the
+        /// grant fires exactly once per install and never re-grants on later launches.
+        /// A pre-1.7 (schema v1) save migrates to v2 with this TRUE — those players
+        /// already launched and hold their credits, so they must not be re-granted.
+        /// Not a collection; <see cref="CoerceNullCollections"/> does not touch it.
+        /// </summary>
+        public bool StartingCreditsGranted { get; set; }
+
+        /// <summary>
         /// Codex collection state keyed by stable monster id (<c>"monNN"</c>). A key's
         /// presence means the monster is discovered; the entry carries the per-monster
         /// scan/capture/slay/variant flags.

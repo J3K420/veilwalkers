@@ -1,0 +1,27 @@
+{
+    "name": "Veilwalkers.App.Tests",
+    "rootNamespace": "Veilwalkers.App.Tests",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Veilwalkers.Core",
+        "Veilwalkers.Persistence",
+        "Veilwalkers.Economy",
+        "Veilwalkers.App"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

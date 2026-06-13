@@ -10,7 +10,7 @@ namespace Veilwalkers.Persistence
     public static class SaveMigrations
     {
         /// <summary>The schema version this build reads and writes.</summary>
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         /// <summary>
         /// Bring a raw save document from <paramref name="fromVersion"/> up to
@@ -33,10 +33,29 @@ namespace Veilwalkers.Persistence
             }
 
             // Future versions chain here, one step at a time:
-            //   if (fromVersion < 2) { MigrateV1ToV2(save); }
+            if (fromVersion < 2)
+            {
+                MigrateV1ToV2(save);
+            }
             //   if (fromVersion < 3) { MigrateV2ToV3(save); }
+
             save["schemaVersion"] = CurrentVersion;
             return save;
+        }
+
+        /// <summary>
+        /// v1 → v2 (Story 1.7): introduce the <c>startingCreditsGranted</c> marker and
+        /// set it TRUE for every existing save. A v1 save belongs to a player who
+        /// already launched before the first-launch grant existed and already holds
+        /// their credits; marking it granted prevents a surprise +20 re-grant on the
+        /// update that ships this schema. A genuinely fresh install has no save file at
+        /// all, so it never passes through here — it starts from a default v2 model
+        /// with the marker false and receives the grant. The migration operates on the
+        /// raw JSON before deserialization (see <c>LocalProgressStore.LoadAsync</c>).
+        /// </summary>
+        private static void MigrateV1ToV2(JObject save)
+        {
+            save["startingCreditsGranted"] = true;
         }
     }
 }

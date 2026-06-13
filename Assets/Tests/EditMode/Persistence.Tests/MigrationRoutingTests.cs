@@ -36,6 +36,25 @@ namespace Veilwalkers.Persistence.Tests
             Assert.AreEqual(0, loaded.Credits);
             Assert.IsNotNull(loaded.Codex);
             Assert.IsNotNull(loaded.PendingPurchases);
+            // v1→v2 (Story 1.7): an existing save migrates with the first-launch marker
+            // TRUE so the player is not re-granted their starting Credits on update.
+            Assert.IsTrue(loaded.StartingCreditsGranted,
+                "A migrated v1 save must carry StartingCreditsGranted == true.");
+        }
+
+        [Test]
+        public void Migrating_a_v1_save_with_credits_preserves_them_and_marks_granted()
+        {
+            // An existing player (v1 save, real balance) must keep their credits AND be
+            // marked granted — defaulting the marker false would re-grant +20 on update.
+            TestSaveFiles.WriteCraftedSave(_dir, "{\"schemaVersion\":1,\"credits\":7}");
+
+            SaveModel loaded = _store.LoadAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual(SaveMigrations.CurrentVersion, loaded.SchemaVersion);
+            Assert.AreEqual(7, loaded.Credits, "Existing balance is preserved across the migration.");
+            Assert.IsTrue(loaded.StartingCreditsGranted,
+                "An existing player is marked granted so they are not re-granted.");
         }
 
         [Test]
