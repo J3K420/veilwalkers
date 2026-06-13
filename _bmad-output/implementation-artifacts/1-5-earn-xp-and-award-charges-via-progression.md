@@ -4,7 +4,7 @@ baseline_commit: 7a6b130
 
 # Story 1.5: Earn XP and award charges via progression
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -252,3 +252,19 @@ Cloned the proven 1.4 `CreditService` AR-8 pipeline for every progression mutati
 ### Change Log
 
 - 2026-06-12 — Story 1.5 implemented: progression spine (`IProgressionService`/`ProgressionService`, `ChargeType`, `ChargeInventory`, `ProgressionRules`, shared `SaveMutationLock` + sanctioned `CreditService` ctor refit, `InsufficientCharges` reason), Bootstrap wiring, and Economy.Tests additions incl. the AR-20 charge-atomicity test.
+
+### Review Findings
+
+Code review 2026-06-12 (3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). Acceptance Auditor: no AC violations — all three ACs and every sanctioned constraint satisfied. Blind + Edge independently converged on the pre-persist rollback-window gap (Findings 1–2).
+
+- [x] [Review][Patch] `AddXpAsync`/`AddChargeAsync` mutate-span throws could leave the model partially mutated with no rollback [Assets/Veilwalkers/Economy/ProgressionService.cs] — RESOLVED. The original draft wrote `model.Xp`, the charge counts, and `model.Level` before the persist-`try`, so a `checked` overflow or `SetCount` guard throw escaped with the captured model (== `_saveService.Current`) durably half-mutated. **Resolution (final):** restructured both methods to compute the entire post-state into LOCALS (`newXp`, `newCounts`, `newLevel`) first; all overflow-prone `checked` arithmetic now runs BEFORE any model write, so an overflow throws cleanly as the documented programmer-error (model untouched, nothing to roll back) AND the partial-mutation hazard is eliminated. The model writes happen only after all arithmetic succeeds, inside the rollback `try` that covers the persist fault + recovery-swap. (A first attempt that merely widened the `try` to catch the overflow regressed `AddXp_overflowing_lifetime_xp_throws_and_leaves_state_untouched` — it turned the contractual throw into a `Result.Fail`; the locals-first structure is the correct fix that satisfies both contracts.)
+
+- [x] [Review][Patch] `levelsGained` could go negative; `Level NEVER decreases` was unenforced [Assets/Veilwalkers/Economy/ProgressionService.cs] — RESOLVED. `levelsGained = Math.Max(0, LevelForXp(newXp) - priorLevel)` (clamped ≥ 0) and the committed level is derived as `newLevel = priorLevel + levelsGained`, so a Story-1.6 threshold rebalance that leaves stored Level > `LevelForXp(Xp)` no longer de-levels the player or produces a negative grant (negative `newCounts[i]` is now structurally impossible). Comment corrected. Regression test added: `AddXp_never_decreases_a_stored_level_above_the_xp_derived_level` (seeds Level 2 above the XP-derived level, asserts no decrease / no grant / no event).
+
+- [x] [Review][Patch] Recovery-swap branch of `AddXpAsync`/`AddChargeAsync` was untested [Assets/Tests/EditMode/Economy.Tests/ChargePipelineTests.cs] — RESOLVED. Added `Recovery_swap_mid_addxp_...` and `Recovery_swap_mid_addcharge_...`. Adversarial verification caught a first version as **tautological** (it asserted on `progression.Xp`, which reads the swapped-in recovered model and passes regardless of rollback); fixed to capture the pre-swap model reference (`SaveModel captured = save.Current`, the same object the service rolls back) and assert the restored state directly on it — mutation-tested: deleting the swap-branch `Rollback` now turns both tests red.
+
+- [x] [Review][Defer] No cross-service serialization test for `AddXpAsync` under the shared lock [Assets/Tests/EditMode/Economy.Tests/ChargePipelineTests.cs] — deferred, additive coverage. The shared-lock test pairs a credit spend with a charge consume; `AddXpAsync` (5-field mutation, highest-impact) is not pinned racing another mutator. The lock itself is proven; this is extra coverage, not a defect. Logged to `deferred-work.md`.
+
+**Resolution note (2026-06-12):** All 3 patches applied and adversarially re-verified across three rounds; the headless EditMode gate surfaced one regression from the first patch attempt (overflow contract), corrected via the locals-first restructure above.
+
+**Final gate (2026-06-13):** Headless EditMode suite GREEN — `result="Passed"`, 86/86 (0 failed, 0 compile errors). Suite grew from 85 → 86 (the de-level regression test + the two de-tautologized recovery-swap tests, net of the locals-first restructure leaving the existing overflow test green). Story → `done`; sprint-status synced.

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-10
-last_updated: 2026-06-12
+last_updated: 2026-06-13
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -48,7 +48,7 @@ development_status:
   1-2-establish-assembly-boundaries-and-composition-root: done
   1-3-persist-player-state-with-encrypted-atomic-local-save: done
   1-4-grant-and-spend-credits-through-the-ledger: done
-  1-5-earn-xp-and-award-charges-via-progression: review
+  1-5-earn-xp-and-award-charges-via-progression: done
   1-6-configure-economy-values-data-drivenly: backlog
   1-7-grant-20-starting-credits-on-first-launch: backlog
   1-8-claim-a-daily-free-credit-reward: backlog

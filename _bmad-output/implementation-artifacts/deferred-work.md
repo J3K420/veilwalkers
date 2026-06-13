@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 1-5-earn-xp-and-award-charges-via-progression (2026-06-12)
+
+- **No cross-service serialization test for `AddXpAsync` under the shared `SaveMutationLock`** — The shared-lock serialization test (`ChargePipelineTests`) pairs a `CreditService` spend with a charge consume, proving the lock interleaves two Economy mutators. But `AddXpAsync` — the widest mutation in the codebase (XP + level + three charge counts) and therefore the highest-impact serialization regression target — is not pinned racing another mutator under the lock. Deferred reason: the lock itself is proven by the existing test; this is additive coverage of the same mechanism, not a defect, and the patch findings (rollback-window hardening) are the blocking items for this review. Owner: fold into the next Economy test-hardening pass (or Epic 4, which composes multi-delta actions and will exercise `AddXpAsync` under concurrency). [Assets/Tests/EditMode/Economy.Tests/ChargePipelineTests.cs]
+
 ## Deferred from: code review of 1-4-grant-and-spend-credits-through-the-ledger (2026-06-12)
 
 - **No timeout/cancellation on the credit mutation lock or persist await** — A store write that hangs (e.g. Android scoped-storage stall) holds `CreditService`'s `SemaphoreSlim` forever; every subsequent spend/grant queues behind it for the session with no typed failure ever returned, and `ICreditService` has no `CancellationToken` plumbing to fix it from outside. Deferred reason: cancellation/timeout design belongs with the AR-19 long-op escalation surface (Epic 6 status UI / later hardening), and adding tokens piecemeal to one service would fragment the contract. Owner: Epic 6 / post-MVP hardening. [Assets/Veilwalkers/Economy/CreditService.cs:62,126]

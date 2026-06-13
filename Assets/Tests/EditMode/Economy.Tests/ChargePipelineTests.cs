@@ -164,6 +164,95 @@ namespace Veilwalkers.Economy.Tests
         }
 
         [Test]
+        public void Recovery_swap_mid_addxp_rolls_back_xp_level_and_charges_with_no_phantom_event()
+        {
+            // The widest-rollback path: a recovery swap mid-persist of AddXpAsync must
+            // restore XP, level, AND all three charge counts on the captured model, fail
+            // the result, and raise NO event (mirrors the consume-swap guard).
+            var seed = new SaveModel { Xp = 90, Level = 0 };
+            var (store, save, progression) = CreateInitialized(
+                Rules(new[] { 100, 250 }, strong: 1, stability: 1, nightveil: 1), seed);
+
+            int eventCount = 0;
+            progression.OnXpChanged += _ => eventCount++;
+            progression.OnLevelChanged += _ => eventCount++;
+            progression.OnChargesChanged += (_, __) => eventCount++;
+
+            // Capture the model AddXpAsync will operate on BEFORE the swap. The service
+            // captures _saveService.Current too, so this is the SAME object it rolls back.
+            // Asserting on `captured` (not progression.Xp, which reads the swapped-in
+            // recovered model) is what actually pins Rollback — delete the swap-branch
+            // Rollback call and these assertions go red.
+            SaveModel captured = save.Current;
+
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            store.SaveGate = gate;
+
+            // The add crosses the threshold (grants charges) and is held at its persist.
+            Task<Result> add = progression.AddXpAsync(50);
+            Assert.IsFalse(add.IsCompleted);
+
+            // Recovery publishes a FRESH model object: Current is no longer the captured
+            // model, so the post-persist ReferenceEquals check fails.
+            store.SaveGate = null;
+            save.RetryLoadAsync().GetAwaiter().GetResult();
+            Assert.AreNotSame(captured, save.Current, "Recovery must have swapped in a fresh model.");
+
+            LogAssert.Expect(LogType.Error,
+                new Regex("ProgressionService: XP grant of 50 rolled back — the save model was swapped"));
+
+            gate.SetResult(true);
+            Result result = add.GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "A mid-operation model swap must never report a phantom success.");
+
+            // The load-bearing assertions: the CAPTURED model must have every mutated
+            // field rolled back to its prior value (XP 90, level 0, all charges 0),
+            // independent of the recovered model's state.
+            Assert.AreEqual(90, captured.Xp, "Captured model's XP rolled back.");
+            Assert.AreEqual(0, captured.Level, "Captured model's level rolled back.");
+            Assert.AreEqual(0, captured.StrongCaptureCharges, "Captured model's charges rolled back.");
+            Assert.AreEqual(0, captured.StabilityBoostCharges);
+            Assert.AreEqual(0, captured.NightveilFilterCharges);
+            Assert.AreEqual(0, eventCount, "No event for an XP add that did not commit.");
+        }
+
+        [Test]
+        public void Recovery_swap_mid_addcharge_reports_failure_with_no_phantom_event()
+        {
+            var seed = new SaveModel { StabilityBoostCharges = 3 };
+            var (store, save, progression) = CreateInitialized(Rules(new[] { 100 }), seed);
+
+            int chargeEvents = 0;
+            progression.OnChargesChanged += (_, __) => chargeEvents++;
+
+            // Same object AddChargeAsync captures; assert rollback on it, not on the
+            // recovered model that progression.GetChargeCount would read post-swap.
+            SaveModel captured = save.Current;
+
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            store.SaveGate = gate;
+
+            Task<Result> grant = progression.AddChargeAsync(ChargeType.StabilityBoost);
+            Assert.IsFalse(grant.IsCompleted);
+
+            store.SaveGate = null;
+            save.RetryLoadAsync().GetAwaiter().GetResult();
+            Assert.AreNotSame(captured, save.Current, "Recovery must have swapped in a fresh model.");
+
+            LogAssert.Expect(LogType.Error,
+                new Regex("ProgressionService: charge grant .* rolled back — the save model was swapped"));
+
+            gate.SetResult(true);
+            Result result = grant.GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "A mid-operation model swap must never report a phantom success.");
+            Assert.AreEqual(3, captured.StabilityBoostCharges,
+                "The captured model's grant is rolled back to the prior count.");
+            Assert.AreEqual(0, chargeEvents, "No event for a grant that did not commit.");
+        }
+
+        [Test]
         public void Charge_consume_does_not_mutate_while_a_credit_spend_holds_the_shared_lock()
         {
             // The test that justifies the shared SaveMutationLock: a credit spend and a

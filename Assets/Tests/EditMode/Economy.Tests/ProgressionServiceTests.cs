@@ -177,6 +177,37 @@ namespace Veilwalkers.Economy.Tests
         }
 
         [Test]
+        public void AddXp_never_decreases_a_stored_level_above_the_xp_derived_level()
+        {
+            // Story 1.6 rebalance scenario: a save earned on an old curve carries a
+            // stored Level HIGHER than the new curve's LevelForXp(Xp). The contract is
+            // "Level never decreases here" and "no silent de-level on rebalance" — so a
+            // further XP add must leave Level untouched and grant nothing, never compute
+            // a negative gain. (Seed Level 2 with Xp 90 under a {100,250} curve where
+            // LevelForXp(90) == 0.)
+            var seed = new SaveModel { Xp = 90, Level = 2 };
+            var (store, save, progression) = CreateInitialized(
+                Rules(new[] { 100, 250 }, strong: 1, stability: 1, nightveil: 1), seed);
+
+            int levelEvents = 0;
+            int chargeEvents = 0;
+            progression.OnLevelChanged += _ => levelEvents++;
+            progression.OnChargesChanged += (_, __) => chargeEvents++;
+
+            // Add a small amount that still does not reach threshold[0] = 100.
+            Result result = progression.AddXpAsync(5).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(95, progression.Xp, "XP still advances.");
+            Assert.AreEqual(2, progression.Level, "Stored level is NOT decreased to LevelForXp(95) == 0.");
+            Assert.AreEqual(0, progression.GetChargeCount(ChargeType.StrongCapture),
+                "No negative/spurious grant when the derived level is below the stored one.");
+            Assert.AreEqual(2, store.Stored.Level, "The undecreased level is what persists.");
+            Assert.AreEqual(0, levelEvents, "Level did not change ⇒ no OnLevelChanged.");
+            Assert.AreEqual(0, chargeEvents, "No charges granted ⇒ no OnChargesChanged.");
+        }
+
+        [Test]
         public void AddCharge_increments_only_the_targeted_type_and_persists()
         {
             var (store, save, progression) = CreateInitialized(Rules(new[] { 100 }));

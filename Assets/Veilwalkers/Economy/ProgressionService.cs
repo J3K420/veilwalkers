@@ -105,44 +105,62 @@ namespace Veilwalkers.Economy
                     priorCounts[i] = ChargeInventory.GetCount(model, AllChargeTypes[i]);
                 }
 
-                // checked: a buggy caller must not overflow lifetime XP into the save.
-                // OverflowException is a programmer-error throw, same family as the
-                // argument guards.
+                // Compute the entire post-state into LOCALS first, mutating nothing on the
+                // model. All checked-arithmetic throws (XP overflow, charge-grant overflow)
+                // therefore fire BEFORE any model write — overflow stays a clean
+                // programmer-error throw (the documented contract) with the model
+                // untouched, so there is nothing to roll back. Only the persist (and the
+                // recovery-swap) below needs rollback.
                 checked
                 {
-                    model.Xp = priorXp + amount;
+                    newXp = priorXp + amount;
                 }
 
-                newLevel = _rules.LevelForXp(model.Xp);
-                int levelsGained = newLevel - priorLevel; // XP only rises ⇒ never negative.
+                // Clamp to >= 0: XP only rises, but Level is stored as-earned (not
+                // derived on read), so a future threshold rebalance (Story 1.6) can
+                // leave stored Level > LevelForXp(Xp). Without the clamp the next add
+                // would compute a negative gain, decrease Level (this method must
+                // NEVER decrease it), and produce negative charge grants. The clamp
+                // makes "no level gained ⇒ no grant" the floor; a rebalance migration
+                // owns any re-leveling.
+                int levelsGained = Math.Max(0, _rules.LevelForXp(newXp) - priorLevel);
 
                 for (int i = 0; i < AllChargeTypes.Length; i++)
                 {
                     int grantEach = _rules.GrantPerLevelUp(AllChargeTypes[i]);
-                    int target;
                     checked
                     {
-                        target = priorCounts[i] + (grantEach * levelsGained);
+                        newCounts[i] = priorCounts[i] + (grantEach * levelsGained);
                     }
-
-                    ChargeInventory.SetCount(model, AllChargeTypes[i], target);
                 }
 
-                model.Level = newLevel;
+                // Derive the committed level from the SAME clamped gain so Level is
+                // monotonic: a rebalance that lowered LevelForXp(Xp) below the stored
+                // level leaves Level unchanged rather than de-leveling the player.
+                newLevel = priorLevel + levelsGained;
 
+                // All arithmetic succeeded — now write the locals onto the model and
+                // persist. The rollback try opens here, around the mutate-and-persist
+                // span, because from this point a persist fault or a recovery swap must
+                // restore the full captured snapshot.
                 try
                 {
+                    model.Xp = newXp;
+                    for (int i = 0; i < AllChargeTypes.Length; i++)
+                    {
+                        ChargeInventory.SetCount(model, AllChargeTypes[i], newCounts[i]);
+                    }
+
+                    model.Level = newLevel;
+
                     await _saveService.SaveAsync().ConfigureAwait(false);
 
                     if (ReferenceEquals(_saveService.Current, model))
                     {
+                        // newXp / newCounts already hold the committed post-state (computed
+                        // into locals above and written verbatim to the model), so the
+                        // post-release event raise reads them directly.
                         committed = true;
-                        newXp = model.Xp;
-                        for (int i = 0; i < AllChargeTypes.Length; i++)
-                        {
-                            newCounts[i] = ChargeInventory.GetCount(model, AllChargeTypes[i]);
-                        }
-
                         result = Result.Ok();
                     }
                     else
@@ -159,6 +177,8 @@ namespace Veilwalkers.Economy
                 {
                     // Restore every captured field onto the captured reference — never
                     // recompute (anything else may have moved) and never re-read Current.
+                    // This catch now covers only the persist fault (the mutate-span
+                    // overflow/guard throws happen above, before any model write).
                     Rollback(model, priorXp, priorLevel, priorCounts);
                     GameLog.Error(
                         $"ProgressionService: XP grant of {amount} rolled back — persist failed. {ex.Message}");
@@ -207,22 +227,28 @@ namespace Veilwalkers.Economy
                 SaveModel model = RequireModel();
                 int priorCount = ChargeInventory.GetCount(model, type);
 
+                // Compute the increment into a local first: a checked overflow throws
+                // before any model write (clean programmer-error throw, model untouched,
+                // nothing to roll back), symmetric with AddXpAsync.
                 int target;
                 checked
                 {
                     target = priorCount + 1;
                 }
 
-                ChargeInventory.SetCount(model, type, target);
+                newCount = target;
 
+                // The rollback try opens around the mutate-and-persist span: from the
+                // model write on, a persist fault or recovery swap must restore the count.
                 try
                 {
+                    ChargeInventory.SetCount(model, type, target);
+
                     await _saveService.SaveAsync().ConfigureAwait(false);
 
                     if (ReferenceEquals(_saveService.Current, model))
                     {
                         committed = true;
-                        newCount = ChargeInventory.GetCount(model, type);
                         result = Result.Ok();
                     }
                     else
