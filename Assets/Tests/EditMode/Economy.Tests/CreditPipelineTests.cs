@@ -62,6 +62,7 @@ namespace Veilwalkers.Economy.Tests
             Assert.AreEqual(5, save.Current.Credits, "The deduction must be rolled back.");
             Assert.AreEqual(1, store.SaveCalls, "The persist was attempted exactly once.");
             Assert.AreEqual(0, changedCount, "No OnCreditsChanged for an uncommitted spend.");
+            Assert.AreEqual(5, store.Stored.Credits, "The persisted snapshot is untouched by the failed save.");
         }
 
         [Test]
@@ -81,7 +82,10 @@ namespace Veilwalkers.Economy.Tests
             Assert.IsFalse(result.Success);
             Assert.IsNotEmpty(result.Message);
             Assert.AreEqual(7, save.Current.Credits, "The grant must be rolled back.");
+            Assert.AreEqual(7, credits.Balance, "Balance reads the restored value after rollback.");
+            Assert.AreEqual(1, store.SaveCalls, "The persist was attempted exactly once — no retry.");
             Assert.AreEqual(0, changedCount, "No OnCreditsChanged for an uncommitted grant.");
+            Assert.AreEqual(7, store.Stored.Credits, "The persisted snapshot is untouched by the failed save.");
         }
 
         [Test]
@@ -115,6 +119,39 @@ namespace Veilwalkers.Economy.Tests
             Assert.AreEqual(5, spendB.Result.NewBalance);
             Assert.AreEqual(5, save.Current.Credits, "Both spends commit once the gate opens.");
             Assert.AreEqual(2, store.SaveCalls, "Exactly one persist per spend.");
+        }
+
+        [Test]
+        public void Recovery_swap_mid_spend_reports_PersistenceFailed_not_phantom_success()
+        {
+            var (store, save, credits) = CreateInitialized(10);
+
+            int changedCount = 0;
+            credits.OnCreditsChanged += _ => changedCount++;
+
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            store.SaveGate = gate;
+
+            // The spend deducts on its captured model and is held open at the persist.
+            Task<SpendResult> spend = credits.TrySpendCreditsAsync(3);
+            Assert.IsFalse(spend.IsCompleted);
+
+            // Recovery races the in-flight mutation: RetryLoadAsync publishes a
+            // FRESH model object (the fake clones on load, like the real store
+            // deserializing), so Current no longer is the spend's captured model.
+            store.SaveGate = null;
+            save.RetryLoadAsync().GetAwaiter().GetResult();
+
+            LogAssert.Expect(LogType.Error, new Regex("CreditService: spend of 3 rolled back — the save model was swapped"));
+
+            gate.SetResult(true);
+            SpendResult result = spend.GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "A mid-operation model swap must never report a phantom success.");
+            Assert.AreEqual(SpendFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(10, result.NewBalance, "The result reports the restored prior balance.");
+            Assert.AreEqual(10, credits.Balance, "Balance reads the swapped-in (recovered) model.");
+            Assert.AreEqual(0, changedCount, "No OnCreditsChanged for a spend that did not commit.");
         }
 
         [Test]

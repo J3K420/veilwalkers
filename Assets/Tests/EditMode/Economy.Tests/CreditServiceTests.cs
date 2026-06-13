@@ -44,6 +44,8 @@ namespace Veilwalkers.Economy.Tests
             Assert.AreEqual(SpendFailureReason.None, result.FailureReason);
             Assert.AreEqual(2, credits.Balance);
             Assert.AreEqual(1, store.SaveCalls, "The spend must persist exactly once.");
+            Assert.AreEqual(2, store.Stored.Credits,
+                "The persisted snapshot holds the deducted balance (the fake clones on save).");
             CollectionAssert.AreEqual(new[] { "persisted", "changed" }, order,
                 "OnCreditsChanged fires exactly once, AFTER the committed persist.");
             CollectionAssert.AreEqual(new[] { 2 }, changedPayloads);
@@ -102,6 +104,7 @@ namespace Veilwalkers.Economy.Tests
             Assert.IsTrue(result.Success);
             Assert.AreEqual(20, credits.Balance);
             Assert.AreEqual(1, store.SaveCalls);
+            Assert.AreEqual(20, store.Stored.Credits, "The persisted snapshot holds the granted balance.");
             CollectionAssert.AreEqual(new[] { 20 }, changedPayloads);
         }
 
@@ -109,6 +112,10 @@ namespace Veilwalkers.Economy.Tests
         public void Non_positive_cost_or_amount_throws_ArgumentOutOfRange()
         {
             var (store, save, credits) = CreateInitialized(5);
+
+            int eventCount = 0;
+            credits.OnCreditsChanged += _ => eventCount++;
+            credits.OnInsufficientCredits += _ => eventCount++;
 
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => credits.TrySpendCreditsAsync(0).GetAwaiter().GetResult());
@@ -121,6 +128,7 @@ namespace Veilwalkers.Economy.Tests
 
             Assert.AreEqual(5, credits.Balance, "Guard throws must leave the balance untouched.");
             Assert.AreEqual(0, store.SaveCalls);
+            Assert.AreEqual(0, eventCount, "Argument guards must raise no events.");
         }
 
         [Test]

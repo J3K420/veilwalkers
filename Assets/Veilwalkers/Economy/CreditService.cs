@@ -24,6 +24,19 @@ namespace Veilwalkers.Economy
     /// raising inside the lock would deadlock any subscriber that synchronously
     /// blocks on another credit mutation. With <c>ConfigureAwait(false)</c> on every
     /// await, events may fire on a background thread — UI marshals (Epic 6).
+    /// A throwing subscriber is caught and logged: a mutation that already
+    /// committed must never surface as a faulted task (the caller would plausibly
+    /// retry an already-persisted spend).
+    /// </para>
+    /// <para>
+    /// Recovery-swap guard: <c>SaveService.SaveAsync</c> persists whatever
+    /// <c>Current</c> holds at call time, so a recovery swap
+    /// (<c>StartFreshAsync</c>/<c>RetryLoadAsync</c>) racing a mutation could
+    /// persist a model this operation never touched. After the persist, the
+    /// captured reference is checked against <c>Current</c>; a mismatch is rolled
+    /// back and reported as <see cref="SpendFailureReason.PersistenceFailed"/> —
+    /// never a phantom success. (This narrows the race; true mutual exclusion
+    /// between recovery and mutations is the Epic 6 recovery flow's contract.)
     /// </para>
     /// </summary>
     public sealed class CreditService : ICreditService
@@ -80,8 +93,21 @@ namespace Veilwalkers.Economy
                     try
                     {
                         await _saveService.SaveAsync().ConfigureAwait(false);
-                        committed = true;
-                        result = SpendResult.Succeeded(model.Credits);
+
+                        if (ReferenceEquals(_saveService.Current, model))
+                        {
+                            committed = true;
+                            result = SpendResult.Succeeded(model.Credits);
+                        }
+                        else
+                        {
+                            // A recovery swap replaced the model mid-operation:
+                            // what SaveAsync persisted is not this deduction.
+                            model.Credits = priorBalance;
+                            GameLog.Error(
+                                $"CreditService: spend of {cost} rolled back — the save model was swapped mid-operation (recovery raced a mutation).");
+                            result = SpendResult.Failed(SpendFailureReason.PersistenceFailed, priorBalance);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -100,11 +126,11 @@ namespace Veilwalkers.Economy
 
             if (insufficient)
             {
-                OnInsufficientCredits?.Invoke(insufficientEvent);
+                RaiseInsufficientCredits(insufficientEvent);
             }
             else if (committed)
             {
-                OnCreditsChanged?.Invoke(result.NewBalance);
+                RaiseCreditsChanged(result.NewBalance);
             }
 
             return result;
@@ -140,9 +166,22 @@ namespace Veilwalkers.Economy
                 try
                 {
                     await _saveService.SaveAsync().ConfigureAwait(false);
-                    committed = true;
-                    newBalance = model.Credits;
-                    result = Result.Ok();
+
+                    if (ReferenceEquals(_saveService.Current, model))
+                    {
+                        committed = true;
+                        newBalance = model.Credits;
+                        result = Result.Ok();
+                    }
+                    else
+                    {
+                        // A recovery swap replaced the model mid-operation:
+                        // what SaveAsync persisted is not this grant.
+                        model.Credits = priorBalance;
+                        GameLog.Error(
+                            $"CreditService: grant of {amount} rolled back — the save model was swapped mid-operation (recovery raced a mutation).");
+                        result = Result.Fail("The credit grant could not be saved; the balance is unchanged.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -159,10 +198,43 @@ namespace Veilwalkers.Economy
 
             if (committed)
             {
-                OnCreditsChanged?.Invoke(newBalance);
+                RaiseCreditsChanged(newBalance);
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Invoke <see cref="OnCreditsChanged"/> with subscriber isolation: the
+        /// mutation is already committed, so a throwing subscriber must be logged,
+        /// not propagated — a faulted task here would tell the caller a persisted
+        /// spend/grant failed (and invite a double-spend retry).
+        /// </summary>
+        private void RaiseCreditsChanged(int newBalance)
+        {
+            try
+            {
+                OnCreditsChanged?.Invoke(newBalance);
+            }
+            catch (Exception ex)
+            {
+                GameLog.Error(
+                    $"CreditService: an OnCreditsChanged subscriber threw — the mutation is already committed. {ex.Message}");
+            }
+        }
+
+        /// <summary>Same subscriber isolation for the rejected-spend event.</summary>
+        private void RaiseInsufficientCredits(InsufficientCreditsEvent insufficientEvent)
+        {
+            try
+            {
+                OnInsufficientCredits?.Invoke(insufficientEvent);
+            }
+            catch (Exception ex)
+            {
+                GameLog.Error(
+                    $"CreditService: an OnInsufficientCredits subscriber threw. {ex.Message}");
+            }
         }
 
         /// <summary>

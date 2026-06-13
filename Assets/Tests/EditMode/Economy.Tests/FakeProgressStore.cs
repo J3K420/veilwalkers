@@ -13,6 +13,14 @@ namespace Veilwalkers.Economy.Tests
     /// <see cref="FailNextSave"/> flag (rollback paths), a save-call counter, and an
     /// optional <see cref="SaveGate"/> a test can hold open to pin the
     /// serialization guarantee.
+    /// <para>
+    /// Like the real store (which serializes on save and deserializes a fresh
+    /// object on load), <see cref="SaveAsync"/> stores a SNAPSHOT and
+    /// <see cref="LoadAsync"/> returns a fresh copy — <see cref="Stored"/> never
+    /// aliases the live model, so "was it persisted?" assertions are real, not
+    /// tautological. The clone copies the scalar fields the economy tests use;
+    /// collections reset to defaults (1.4-review-sanctioned scalar fidelity).
+    /// </para>
     /// </summary>
     internal sealed class FakeProgressStore : IProgressStore
     {
@@ -40,7 +48,7 @@ namespace Veilwalkers.Economy.Tests
                 throw new FileNotFoundException("FakeProgressStore: no save exists.");
             }
 
-            return Task.FromResult(Stored);
+            return Task.FromResult(Clone(Stored));
         }
 
         public async Task SaveAsync(SaveModel model)
@@ -59,10 +67,31 @@ namespace Veilwalkers.Economy.Tests
                 throw new IOException("FakeProgressStore: simulated save failure.");
             }
 
-            Stored = model;
+            Stored = Clone(model);
         }
 
         public bool Exists() => Stored != null;
+
+        /// <summary>
+        /// Scalar-fidelity copy: every field the economy tests assert on; the
+        /// collections/objects reset to fresh defaults (no credit test touches
+        /// them, and a shallow share would re-introduce aliasing).
+        /// </summary>
+        private static SaveModel Clone(SaveModel model)
+        {
+            return new SaveModel
+            {
+                SchemaVersion = model.SchemaVersion,
+                Credits = model.Credits,
+                Xp = model.Xp,
+                Level = model.Level,
+                StrongCaptureCharges = model.StrongCaptureCharges,
+                StabilityBoostCharges = model.StabilityBoostCharges,
+                NightveilFilterCharges = model.NightveilFilterCharges,
+                DailyClaim = model.DailyClaim,
+                FirstZeroCreditDay = model.FirstZeroCreditDay,
+            };
+        }
 
         public Task DeleteAsync()
         {

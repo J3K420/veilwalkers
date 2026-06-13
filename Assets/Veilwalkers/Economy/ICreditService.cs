@@ -10,8 +10,9 @@ namespace Veilwalkers.Economy
     /// throw for an expected failure ("can't afford" → <see
     /// cref="SpendFailureReason.InsufficientCredits"/>, persist failure →
     /// <see cref="SpendFailureReason.PersistenceFailed"/>). Throws are reserved for
-    /// programmer errors: non-positive amounts and use before the save model is
-    /// loaded.
+    /// programmer errors: non-positive amounts, use before the save model is
+    /// loaded, and a grant that would overflow the integer balance
+    /// (<see cref="OverflowException"/> from checked arithmetic).
     /// <para>
     /// Naming deviation (documented): the epic writes <c>TrySpendCredits(cost)</c>,
     /// but every spend persists before it is committed (AR-8), so the method is
@@ -19,10 +20,15 @@ namespace Veilwalkers.Economy
     /// the intent (typed result, never throws for can't-afford) is unchanged.
     /// </para>
     /// <para>
-    /// Threading: both events are raised outside the internal mutation lock, only
-    /// after a committed persist, and possibly on a background thread — UI
-    /// consumers (Epic 6) must marshal to the main thread themselves, identical to
-    /// the <c>SaveService</c> event contract.
+    /// Threading: both events are raised outside the internal mutation lock and
+    /// possibly on a background thread — UI consumers (Epic 6) must marshal to the
+    /// main thread themselves, identical to the <c>SaveService</c> event contract.
+    /// <see cref="OnCreditsChanged"/> fires only after a committed persist;
+    /// <see cref="OnInsufficientCredits"/> fires for a rejected spend, which
+    /// persists nothing. Because events are raised after the lock is released,
+    /// delivery order across concurrent mutations is not guaranteed and a payload
+    /// may already be stale on arrival — treat events as change signals and
+    /// re-read <see cref="Balance"/> for the authoritative value.
     /// </para>
     /// </summary>
     public interface ICreditService
@@ -30,7 +36,10 @@ namespace Veilwalkers.Economy
         /// <summary>
         /// The current credit balance, read from the loaded save model. Throws
         /// <see cref="InvalidOperationException"/> before the model is loaded
-        /// (call <c>SaveService.InitializeAsync</c> / recover first).
+        /// (call <c>SaveService.InitializeAsync</c> / recover first). Reads the
+        /// live model without taking the mutation lock: while a mutation is in
+        /// flight the value may include a deducted-but-not-yet-committed change
+        /// that a persist failure will roll back.
         /// </summary>
         int Balance { get; }
 
@@ -48,14 +57,18 @@ namespace Veilwalkers.Economy
         /// pipeline (persist failure rolls back and returns a failed
         /// <see cref="Result"/>). Deliberately dumb — first-launch/pack semantics
         /// live with the callers (Stories 1.7, 5.1). <c>amount &lt;= 0</c> throws
-        /// <see cref="ArgumentOutOfRangeException"/>.
+        /// <see cref="ArgumentOutOfRangeException"/>; an amount that would overflow
+        /// the balance throws <see cref="OverflowException"/> (checked arithmetic —
+        /// a programmer/reconciliation error, never persisted).
         /// </summary>
         Task<Result> GrantCreditsAsync(int amount);
 
         /// <summary>
         /// Raised after a credit mutation has been COMMITTED (persisted); payload
         /// is the new balance. Raised outside the mutation lock, possibly on a
-        /// background thread.
+        /// background thread; delivery order across concurrent mutations is not
+        /// guaranteed, so the payload may be stale — re-read <see cref="Balance"/>
+        /// for the authoritative value.
         /// </summary>
         event Action<int> OnCreditsChanged;
 

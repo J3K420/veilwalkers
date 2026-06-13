@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 1-4-grant-and-spend-credits-through-the-ledger (2026-06-12)
+
+- **No timeout/cancellation on the credit mutation lock or persist await** — A store write that hangs (e.g. Android scoped-storage stall) holds `CreditService`'s `SemaphoreSlim` forever; every subsequent spend/grant queues behind it for the session with no typed failure ever returned, and `ICreditService` has no `CancellationToken` plumbing to fix it from outside. Deferred reason: cancellation/timeout design belongs with the AR-19 long-op escalation surface (Epic 6 status UI / later hardening), and adding tokens piecemeal to one service would fragment the contract. Owner: Epic 6 / post-MVP hardening. [Assets/Veilwalkers/Economy/CreditService.cs:62,126]
+- **Negative `SaveModel.Credits` loaded from disk passes every ledger guard silently** — The ledger validates its inputs (`cost`/`amount > 0`) but never its invariant (`Credits >= 0`): a negative balance arriving via a migration bug, reconciliation replay (the 5.2 scenario the grant's `checked` comment names), or tampered-but-decryptable save propagates unflagged into `Balance`, UI, and future saves. Deferred reason: load-time invariant validation belongs to Persistence/migration, not per-read checks in Economy. Owner: Story 5.2 (reconciliation) + Story 1.9 (telemetry counter for the anomaly); consider a clamp-and-log at `SaveService` load. [Assets/Veilwalkers/Economy/CreditService.cs:46,70]
+
 ## Deferred from: code review of story-1.1 (2026-06-11)
 
 - **`.aab` Build-App-Bundle toggle not committed** — The "Build App Bundle (Google Play)" output mode is stored in `Library/EditorUserBuildSettings.asset`, which is correctly gitignored. A fresh `git clone` + Unity open will NOT carry the .aab output setting, so a build machine / CI / teammate must re-toggle it before building, or could emit an APK instead of the AAB Play requires. Sanctioned as a release-gate item (story Task 6 marked `[~]`; Testing Requirements pre-authorize the full device build as a release-gate, not a unit gate). Owner: AR-21 (build/deploy). Add a one-line build-setup note there so it isn't a surprise.

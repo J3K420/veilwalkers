@@ -4,7 +4,7 @@ baseline_commit: 9c2917a
 
 # Story 1.4: Grant and spend Credits through the ledger
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -88,6 +88,24 @@ So that the in-game economy works with no surprise deductions.
   - [x] No manual play check required this story (no new scene/runtime path; Bootstrap wiring is covered by the wiring test + 1.3's proven boot). If Bootstrap behavior is in doubt, a single Play-Mode console check ("wired and sealed") suffices.
   - [x] All new `.cs`, `.asmdef`, `.meta` files tracked; no secrets.
   - [x] Commit + push (convention: `Story 1.4: <what>`; implementation and review patches as separate commits), update sprint-status. [Source: CLAUDE.md#Working conventions]
+
+### Review Findings
+
+Code review 2026-06-12 (3 layers: Blind Hunter 12, Edge Case Hunter 7, Acceptance Auditor 4 → deduped/triaged: 1 decision, 8 patch, 2 defer, 7 dismissed). Diff: `9c2917a..6f3577e`.
+
+- [x] [Review][Decision→Patched] **Recovery swap mid-mutation makes the commit path persist the WRONG model and still report success** — `SaveService.SaveAsync()` re-reads `Current` at call time (`SaveService.cs:184`), so if `StartFreshAsync`/`RetryLoadAsync` swaps the model between CreditService's deduct (on the captured reference) and its persist await, the save persists the NEW model without the deduction while CreditService sets `committed = true`, returns `Succeeded`, and raises `OnCreditsChanged` with the detached model's balance. The story's captured-reference defense protects only the rollback path; nothing protects the commit path. Currently unreachable in production (no caller of the recovery methods exists until Epic 6 builds the recovery dialog — verified by grep), but the airtight fix is a cross-assembly design choice. Options: (a) mitigate now — post-persist `ReferenceEquals(_saveService.Current, model)` check, treat mismatch as `PersistenceFailed` + `GameLog.Error` (narrows the window, doesn't close it); (b) defer to the Epic 6 recovery story with a hazard note in CreditService + deferred-work.md (recovery must be mutually excluded with in-flight mutations); (c) extend `SaveService` now with a model-pinned `SaveAsync(SaveModel)` that faults on identity mismatch. [blind+edge, High] — **RESOLVED (a)**: post-persist `ReferenceEquals(_saveService.Current, model)` check in spend AND grant; mismatch rolls back the captured model, logs `GameLog.Error`, returns `PersistenceFailed`/`Result.Fail`; hazard + narrows-not-closes caveat documented in the CreditService class doc (Epic 6 recovery flow owns true mutual exclusion); pinned by `Recovery_swap_mid_spend_reports_PersistenceFailed_not_phantom_success`.
+- [x] [Review][Patch] A throwing `OnCreditsChanged`/`OnInsufficientCredits` subscriber faults an already-COMMITTED mutation back to the caller (plausible double-spend on retry); wrap post-release invokes in try/catch + `GameLog.Error` [Assets/Veilwalkers/Economy/CreditService.cs:101-108,160-163] [blind+edge]
+- [x] [Review][Patch] Event delivery order can invert across two committed mutations (post-release race) — payload may be stale vs `Balance`; document the contract on both events (no cross-mutation ordering guarantee; treat as change-signal / re-read `Balance`) [Assets/Veilwalkers/Economy/ICreditService.cs:55-68] [blind+edge]
+- [x] [Review][Patch] `Balance` getter is a dirty read during the persist window (deducted-but-uncommitted, rollback-eligible value observable); document on `ICreditService.Balance` [Assets/Veilwalkers/Economy/ICreditService.cs:30-35] [blind+edge]
+- [x] [Review][Patch] `FakeProgressStore` aliases the live model (`Stored = model` by reference; `LoadAsync` returns it) so "persisted" assertions like `store.Stored.Credits == 15` are tautological — snapshot persisted credits at `SaveAsync` (e.g. `StoredCredits` scalar) and assert on the snapshot [Assets/Tests/EditMode/Economy.Tests/FakeProgressStore.cs:62; CreditPipelineTests.cs:170] [blind+edge]
+- [x] [Review][Patch] False interface summary: "both events are raised … only after a committed persist" — `OnInsufficientCredits` fires with NO persist (doc-comments-must-be-true violation); fix the summary paragraph [Assets/Veilwalkers/Economy/ICreditService.cs:21-26] [auditor]
+- [x] [Review][Patch] Throw enumeration incomplete: `GrantCreditsAsync` also throws `OverflowException` from `checked` arithmetic — absent from both the summary and the method doc [Assets/Veilwalkers/Economy/ICreditService.cs:7-14,46-53] [auditor]
+- [x] [Review][Patch] Grant rollback test weaker than its spend twin: missing `store.SaveCalls == 1` (no retry) and post-rollback `Balance` assertions [Assets/Tests/EditMode/Economy.Tests/CreditPipelineTests.cs (Grant_persist_failure_rolls_back…)] [blind]
+- [x] [Review][Patch] Task 6 specified "neither persists nor raises events" for arg guards, but `Non_positive_cost_or_amount_throws_ArgumentOutOfRange` never subscribes to the events — add the no-event assertions [Assets/Tests/EditMode/Economy.Tests/CreditServiceTests.cs] [auditor]
+- [x] [Review][Defer] No timeout/cancellation on the mutation lock or persist await — one hung store write wedges all credit operations for the session [Assets/Veilwalkers/Economy/CreditService.cs:62,126] — deferred: cancellation/timeout design belongs with the AR-19 long-op escalation surface (Epic 6 status UI / later hardening), not this story's scope [blind+edge]
+- [x] [Review][Defer] Negative `SaveModel.Credits` arriving via load passes every guard silently (ledger validates inputs, never its invariant `Credits >= 0`) [Assets/Veilwalkers/Economy/CreditService.cs:46,70] — deferred: load-time invariant validation belongs to Persistence/migration (touches Stories 1.9 telemetry + 5.2 reconciliation) [edge]
+
+Dismissed (7): serialization-test sync-coupling to SaveService internals (pins the documented calling-thread snapshot contract — a change there SHOULD fail loudly); fault-after-durable-write re-deduct (LocalProgressStore commits via `File.Replace` as its last operation); async guard throws deferred to await-time (TAP-standard; all consumers must await for typed results); `catch(Exception)` laundering OperationCanceledException (no cancellation exists anywhere in the pipeline); FakeProgressStore knob thread-safety (test-only, accesses sequenced safely in every current test); fake's sync-throw `LoadAsync` fidelity (no behavioral difference under SaveService's try placement); review-patch missing `.meta` files (excluded deliberately from the handoff diff; verified present in commit `6f3577e`).
 
 ## Dev Notes
 
@@ -204,6 +222,7 @@ claude-fable-5 (Claude Code)
 ### Debug Log References
 
 - Headless EditMode gate (2026-06-12): 57/57 passed — Architecture.Tests 13, Economy.Tests 12 (new), Persistence.Tests 32. `test-results.xml` confirmed present, log grepped clean for `error CS`, artifacts deleted before commit. (The story's "Persistence.Tests 26" count predates the 6 regression tests the 1.3 review added; 32 is the current full set.)
+- Post-review headless gate (2026-06-12): 58/58 passed after the 9 review patches — Architecture.Tests 13, Economy.Tests 13 (incl. the new recovery-swap regression test), Persistence.Tests 32. `test-results.xml` confirmed present, log grepped clean for `error CS`, artifacts deleted before commit.
 
 ### Completion Notes List
 
@@ -242,3 +261,4 @@ claude-fable-5 (Claude Code)
 ## Change Log
 
 - 2026-06-12 — Story 1.4 implemented: Credit ledger (`ICreditService`/`CreditService`) with AR-8 atomic spend/grant pipeline, `PersistenceFailed` failure reason, `Economy → Persistence` asmdef edge + sanctioned matrix row, Bootstrap wiring, and 12 EditMode tests (full suite 57/57 green headless). Status → review.
+- 2026-06-12 — Code review (3 adversarial layers, 23 raw findings → 1 decision + 8 patch + 2 defer + 7 dismissed). All 9 patches applied: recovery-swap identity check in spend+grant (decision (a), new regression test), subscriber-exception isolation on both events, `FakeProgressStore` clone-on-save/load (de-aliased — persisted-snapshot assertions now real), interface contract docs corrected (false both-events-after-persist claim, `OverflowException` enumeration, `Balance` dirty-read window, event ordering/staleness caveat), grant-rollback + arg-guard tests strengthened. 2 deferrals logged in deferred-work.md (mutation-lock timeout/cancellation → Epic 6/AR-19; negative-Credits load invariant → 5.2/1.9).
