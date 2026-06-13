@@ -31,6 +31,7 @@ namespace Veilwalkers.Economy.Tests
             int strongCapturePerLevelUp = 1,
             int stabilityBoostPerLevelUp = 1,
             int nightveilFilterPerLevelUp = 1,
+            int dailyRewardCredits = 5,
             int adDailyCap = 3,
             int telemetryRetentionDays = 30)
         {
@@ -46,6 +47,7 @@ namespace Veilwalkers.Economy.Tests
                 strongCapturePerLevelUp,
                 stabilityBoostPerLevelUp,
                 nightveilFilterPerLevelUp,
+                dailyRewardCredits,
                 adDailyCap,
                 telemetryRetentionDays);
             return config;
@@ -58,7 +60,7 @@ namespace Veilwalkers.Economy.Tests
                 basicLureCost: 1, premiumLureCost: 4, multiLureCost: 5, slayCost: 3,
                 xpPerCapture: 10, xpPerSlay: 25,
                 strongCapturePerLevelUp: 1, stabilityBoostPerLevelUp: 2, nightveilFilterPerLevelUp: 3,
-                adDailyCap: 3, telemetryRetentionDays: 30);
+                dailyRewardCredits: 7, adDailyCap: 3, telemetryRetentionDays: 30);
 
             // AC-1/AC-2: costs, XP amounts, per-level grants, and the stub tunables all
             // originate in the config and surface through its accessors.
@@ -71,6 +73,7 @@ namespace Veilwalkers.Economy.Tests
             Assert.AreEqual(1, config.StrongCapturePerLevelUp);
             Assert.AreEqual(2, config.StabilityBoostPerLevelUp);
             Assert.AreEqual(3, config.NightveilFilterPerLevelUp);
+            Assert.AreEqual(7, config.DailyRewardCredits);
             Assert.AreEqual(3, config.AdDailyCap);
             Assert.AreEqual(30, config.TelemetryRetentionDays);
         }

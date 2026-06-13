@@ -53,6 +53,9 @@ namespace Veilwalkers.Economy
         [SerializeField] private int _stabilityBoostPerLevelUp = 1;
         [SerializeField] private int _nightveilFilterPerLevelUp = 1;
 
+        [Header("Daily reward (PROVISIONAL — OQ-9)")]
+        [SerializeField] private int _dailyRewardCredits = 5;
+
         [Header("Ad / telemetry caps (fields only — Story 1.9 owns the logic)")]
         [SerializeField] private int _adDailyCap = 3;
         [SerializeField] private int _telemetryRetentionDays = 30;
@@ -92,6 +95,16 @@ namespace Veilwalkers.Economy
 
         /// <summary>Per-level-up Nightveil Filter charge grant. Provisional.</summary>
         public int NightveilFilterPerLevelUp => _nightveilFilterPerLevelUp;
+
+        /// <summary>
+        /// Credits granted by the once-per-UTC-day daily login reward (Story 1.8,
+        /// <c>DailyRewardService</c>). Provisional (OQ-9) — unlike the fixed 20-credit
+        /// first-launch grant (a one-time onboarding constant kept OUT of this asset),
+        /// the daily reward IS a balancing knob, so it lives here (AR-16). Must be
+        /// positive: <c>DailyRewardService</c> treats a non-positive value as a
+        /// misconfiguration and refuses to grant it.
+        /// </summary>
+        public int DailyRewardCredits => _dailyRewardCredits;
 
         /// <summary>
         /// Maximum ad-reward grants per calendar day. Field only — Story 1.9's AdHook
@@ -148,6 +161,14 @@ namespace Veilwalkers.Economy
                 Debug.LogWarning(
                     "EconomyConfig: LevelXpThresholds must have at least one entry.", this);
             }
+
+            if (_dailyRewardCredits <= 0)
+            {
+                Debug.LogWarning(
+                    $"EconomyConfig: DailyRewardCredits ({_dailyRewardCredits}) must be " +
+                    "positive — DailyRewardService refuses to grant a non-positive daily reward.",
+                    this);
+            }
         }
 #endif
 
@@ -169,6 +190,7 @@ namespace Veilwalkers.Economy
             int strongCapturePerLevelUp,
             int stabilityBoostPerLevelUp,
             int nightveilFilterPerLevelUp,
+            int dailyRewardCredits,
             int adDailyCap,
             int telemetryRetentionDays)
         {
@@ -182,6 +204,7 @@ namespace Veilwalkers.Economy
             _strongCapturePerLevelUp = strongCapturePerLevelUp;
             _stabilityBoostPerLevelUp = stabilityBoostPerLevelUp;
             _nightveilFilterPerLevelUp = nightveilFilterPerLevelUp;
+            _dailyRewardCredits = dailyRewardCredits;
             _adDailyCap = adDailyCap;
             _telemetryRetentionDays = telemetryRetentionDays;
         }

@@ -115,11 +115,21 @@ namespace Veilwalkers.App
                 var progressionService = new ProgressionService(
                     saveService, progressionRules, economyMutationLock);
 
+                // The daily-reward claim (Story 1.8): a sibling Economy mutator on the
+                // SAME shared lock, and the FIRST production consumer of the IClock seam
+                // by constructor injection (the calendar-day rule is fakeable in tests).
+                // The reward amount is read from the tuned EconomyConfig (AR-16); a
+                // non-positive value throws here, making a misconfiguration a fatal boot
+                // error rather than a silent zero grant.
+                var dailyRewardService = new DailyRewardService(
+                    saveService, economyMutationLock, clock, _economyConfig);
+
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);
                 GameServices.Register<ICreditService>(creditService);
                 GameServices.Register<IProgressionService>(progressionService);
+                GameServices.Register<IDailyRewardService>(dailyRewardService);
 
                 GameServices.MarkReady();
                 GameLog.Info("Bootstrap: GameServices wired and sealed.");
