@@ -5,7 +5,8 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Veilwalkers.Core",
-        "Veilwalkers.Monsters"
+        "Veilwalkers.Monsters",
+        "Veilwalkers.Persistence"
     ],
     "includePlatforms": [
         "Editor"

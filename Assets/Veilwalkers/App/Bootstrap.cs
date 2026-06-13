@@ -147,6 +147,21 @@ namespace Veilwalkers.App
                 var firstZeroCreditRecorder = new FirstZeroCreditRecorder(
                     saveService, economyMutationLock, clock);
 
+                // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
+                // wired this story. It is the read model + atomic discovery-record seam over
+                // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
+                // (it must NOT inject the Economy SaveMutationLock — that would be an illegal
+                // Monsters → Economy edge). Wiring is deferred because its second collaborator,
+                // a MonsterDatabase instance, has no authored .asset yet (the Story 2.2 [~]
+                // deferral): adding a null [SerializeField] MonsterDatabase and constructing
+                // here would throw ArgumentNullException inside this try and be fatal at boot.
+                // To close the seam once MonsterDatabase.asset exists: add
+                // `using Veilwalkers.Monsters;` + `[SerializeField] private MonsterDatabase
+                // _monsterDatabase;` (null-checked like _economyConfig), then
+                // `new CodexService(saveService, _monsterDatabase)` and
+                // `GameServices.Register<CodexService>(...)`. CodexService's logic is fully
+                // covered by Monsters.Tests, so leaving it unregistered blocks nothing.
+
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);

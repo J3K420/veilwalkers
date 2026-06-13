@@ -2,7 +2,8 @@
     "name": "Veilwalkers.Monsters",
     "rootNamespace": "Veilwalkers.Monsters",
     "references": [
-        "Veilwalkers.Core"
+        "Veilwalkers.Core",
+        "Veilwalkers.Persistence"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
