@@ -1,5 +1,4 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Veilwalkers.Core;
 using Veilwalkers.Persistence;
@@ -18,15 +17,18 @@ namespace Veilwalkers.Economy
     /// Pipeline (AR-8): validate → deduct → persist; the mutation is committed only
     /// once <c>SaveService.SaveAsync</c> succeeds, and a persist fault rolls the
     /// in-memory mutation back onto the model reference captured at operation entry.
-    /// Mutations are serialized by a <see cref="SemaphoreSlim"/>(1,1) so two
-    /// in-flight mutations can never interleave deduct/persist/rollback. Events are
-    /// raised AFTER the semaphore is released (mutate → persist → release → raise):
-    /// raising inside the lock would deadlock any subscriber that synchronously
-    /// blocks on another credit mutation. With <c>ConfigureAwait(false)</c> on every
-    /// await, events may fire on a background thread — UI marshals (Epic 6).
-    /// A throwing subscriber is caught and logged: a mutation that already
-    /// committed must never surface as a faulted task (the caller would plausibly
-    /// retry an already-persisted spend).
+    /// Mutations are serialized by a shared <see cref="SaveMutationLock"/> so two
+    /// in-flight mutations can never interleave deduct/persist/rollback. That lock is
+    /// injected and shared with EVERY Economy mutator of the same <c>SaveModel</c>
+    /// (Story 1.5's <see cref="ProgressionService"/>): a per-service lock would let a
+    /// credit spend and a charge consume interleave and durably persist each other's
+    /// uncommitted deltas. Events are raised AFTER the lock is released
+    /// (mutate → persist → release → raise): raising inside the lock would deadlock
+    /// any subscriber that synchronously blocks on another Economy mutation. With
+    /// <c>ConfigureAwait(false)</c> on every await, events may fire on a background
+    /// thread — UI marshals (Epic 6). A throwing subscriber is caught and logged: a
+    /// mutation that already committed must never surface as a faulted task (the
+    /// caller would plausibly retry an already-persisted spend).
     /// </para>
     /// <para>
     /// Recovery-swap guard: <c>SaveService.SaveAsync</c> persists whatever
@@ -42,7 +44,7 @@ namespace Veilwalkers.Economy
     public sealed class CreditService : ICreditService
     {
         private readonly SaveService _saveService;
-        private readonly SemaphoreSlim _mutationLock = new SemaphoreSlim(1, 1);
+        private readonly SaveMutationLock _mutationLock;
 
         /// <inheritdoc />
         public event Action<int> OnCreditsChanged;
@@ -50,9 +52,16 @@ namespace Veilwalkers.Economy
         /// <inheritdoc />
         public event Action<InsufficientCreditsEvent> OnInsufficientCredits;
 
-        public CreditService(SaveService saveService)
+        /// <summary>
+        /// The <paramref name="mutationLock"/> MUST be the same instance shared with
+        /// every other Economy mutator of the save model (see class doc); Bootstrap
+        /// constructs one and injects it into both this service and
+        /// <see cref="ProgressionService"/>.
+        /// </summary>
+        public CreditService(SaveService saveService, SaveMutationLock mutationLock)
         {
             _saveService = saveService ?? throw new ArgumentNullException(nameof(saveService));
+            _mutationLock = mutationLock ?? throw new ArgumentNullException(nameof(mutationLock));
         }
 
         /// <inheritdoc />

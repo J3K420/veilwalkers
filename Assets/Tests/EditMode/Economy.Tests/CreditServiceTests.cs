@@ -20,7 +20,7 @@ namespace Veilwalkers.Economy.Tests
             var store = new FakeProgressStore { Stored = new SaveModel { Credits = credits } };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
-            return (store, save, new CreditService(save));
+            return (store, save, new CreditService(save, new SaveMutationLock()));
         }
 
         [Test]
@@ -137,7 +137,7 @@ namespace Veilwalkers.Economy.Tests
             // SaveService never initialized: Current is null — the window Bootstrap
             // documents (service resolvable before the model loads).
             var store = new FakeProgressStore();
-            var credits = new CreditService(new SaveService(store));
+            var credits = new CreditService(new SaveService(store), new SaveMutationLock());
 
             int eventCount = 0;
             credits.OnCreditsChanged += _ => eventCount++;
@@ -171,9 +171,13 @@ namespace Veilwalkers.Economy.Tests
         }
 
         [Test]
-        public void Constructing_with_null_save_service_throws_ArgumentNull()
+        public void Constructing_with_null_dependency_throws_ArgumentNull()
         {
-            Assert.Throws<ArgumentNullException>(() => new CreditService(null));
+            var store = new FakeProgressStore();
+            var save = new SaveService(store);
+
+            Assert.Throws<ArgumentNullException>(() => new CreditService(null, new SaveMutationLock()));
+            Assert.Throws<ArgumentNullException>(() => new CreditService(save, null));
         }
     }
 }

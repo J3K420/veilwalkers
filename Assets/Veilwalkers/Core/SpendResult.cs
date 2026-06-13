@@ -6,6 +6,13 @@ namespace Veilwalkers.Core
     /// <see cref="Success"/>; this type NEVER throws for an expected failure such as
     /// "can't afford" — that is reported via <see cref="FailureReason"/>. The credit
     /// pipeline that produces it lands in Story 1.4; the shape is defined here.
+    /// <para>
+    /// Charge consumption (Story 1.5) REUSES this type as-is: a consumed charge is a
+    /// spend whose <see cref="NewBalance"/> carries the remaining charge count of the
+    /// consumed type, and a zero-charge block reports
+    /// <see cref="SpendFailureReason.InsufficientCharges"/>. There is no parallel
+    /// <c>ChargeResult</c> — the two currencies share one result vocabulary.
+    /// </para>
     /// </summary>
     public readonly struct SpendResult
     {

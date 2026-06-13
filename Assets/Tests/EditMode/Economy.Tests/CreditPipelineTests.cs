@@ -36,7 +36,7 @@ namespace Veilwalkers.Economy.Tests
             var store = new FakeProgressStore { Stored = new SaveModel { Credits = credits } };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
-            return (store, save, new CreditService(save));
+            return (store, save, new CreditService(save, new SaveMutationLock()));
         }
 
         [Test]
@@ -161,7 +161,7 @@ namespace Veilwalkers.Economy.Tests
             // referencing Veilwalkers.App.
             var store = new FakeProgressStore();
             var save = new SaveService(store);
-            var credits = new CreditService(save);
+            var credits = new CreditService(save, new SaveMutationLock());
 
             GameServices.Register<ICreditService>(credits);
             GameServices.MarkReady();

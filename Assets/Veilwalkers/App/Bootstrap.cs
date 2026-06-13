@@ -77,12 +77,32 @@ namespace Veilwalkers.App
                 var clock = new SystemClock();
                 var progressStore = new LocalProgressStore(Application.persistentDataPath);
                 var saveService = new SaveService(progressStore);
-                var creditService = new CreditService(saveService);
+
+                // One mutation lock shared by EVERY Economy mutator of the save model:
+                // independent locks would let a credit spend and a charge consume
+                // interleave and durably persist each other's uncommitted deltas
+                // (see SaveMutationLock). Construct once, inject into both services.
+                var economyMutationLock = new SaveMutationLock();
+                var creditService = new CreditService(saveService, economyMutationLock);
+
+                // PROVISIONAL progression rules — placeholder numbers only.
+                // Story 1.6 (EconomyConfig) REPLACES this literal with values read from
+                // the tuned EconomyConfig asset. The placeholder lives in App wiring,
+                // never in service logic, so AR-16 (no hard-coded economy numbers in
+                // logic) is honored by the injection seam. Numbers are NOT balanced.
+                var provisionalProgressionRules = new ProgressionRules(
+                    levelXpThresholds: new[] { 100, 250, 450, 700, 1000 },
+                    strongCapturePerLevelUp: 1,
+                    stabilityBoostPerLevelUp: 1,
+                    nightveilFilterPerLevelUp: 1);
+                var progressionService = new ProgressionService(
+                    saveService, provisionalProgressionRules, economyMutationLock);
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);
                 GameServices.Register<ICreditService>(creditService);
+                GameServices.Register<IProgressionService>(progressionService);
 
                 GameServices.MarkReady();
                 GameLog.Info("Bootstrap: GameServices wired and sealed.");
