@@ -33,6 +33,14 @@ namespace Veilwalkers.App
     [DefaultExecutionOrder(-1000)]
     public sealed class Bootstrap : MonoBehaviour
     {
+        /// <summary>
+        /// The tuned economy values asset (Story 1.6). Assigned on the Bootstrap
+        /// component in the scene-0 entry scene; its numbers drive the
+        /// <see cref="ProgressionRules"/> built below. Required — wiring fails fast at
+        /// boot if it is unassigned (see <see cref="WireServices"/>).
+        /// </summary>
+        [SerializeField] private EconomyConfig _economyConfig;
+
         private void Awake()
         {
             WireServices();
@@ -85,18 +93,22 @@ namespace Veilwalkers.App
                 var economyMutationLock = new SaveMutationLock();
                 var creditService = new CreditService(saveService, economyMutationLock);
 
-                // PROVISIONAL progression rules — placeholder numbers only.
-                // Story 1.6 (EconomyConfig) REPLACES this literal with values read from
-                // the tuned EconomyConfig asset. The placeholder lives in App wiring,
-                // never in service logic, so AR-16 (no hard-coded economy numbers in
-                // logic) is honored by the injection seam. Numbers are NOT balanced.
-                var provisionalProgressionRules = new ProgressionRules(
-                    levelXpThresholds: new[] { 100, 250, 450, 700, 1000 },
-                    strongCapturePerLevelUp: 1,
-                    stabilityBoostPerLevelUp: 1,
-                    nightveilFilterPerLevelUp: 1);
+                // Progression rules come from the tuned EconomyConfig asset (Story 1.6):
+                // economy numbers live as serialized data on the asset, never as
+                // constants in service logic, so AR-16 is honored by the injection seam.
+                // The asset is required — a missing one is a fatal boot misconfiguration
+                // (never silently fall back to a literal: that would reintroduce a
+                // hard-coded number). The EconomyConfig values are OQ-9-provisional.
+                if (_economyConfig == null)
+                {
+                    throw new System.InvalidOperationException(
+                        "Bootstrap: EconomyConfig is not assigned. Assign the EconomyConfig " +
+                        "asset to the Bootstrap component in the scene-0 entry scene.");
+                }
+
+                var progressionRules = _economyConfig.BuildProgressionRules();
                 var progressionService = new ProgressionService(
-                    saveService, provisionalProgressionRules, economyMutationLock);
+                    saveService, progressionRules, economyMutationLock);
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);

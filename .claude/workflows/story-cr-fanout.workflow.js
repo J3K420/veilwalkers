@@ -18,7 +18,14 @@ export const meta = {
 // }
 // The orchestrator MUST have written diffPath before calling this workflow and
 // MUST delete it before committing (per bmad-code-review-pattern memory).
-const { diffPath, storyPath, slug, archPath, epicsPath } = args || {}
+// Accept args as a real object (correct usage) OR a JSON string (defensive: a
+// stringified args payload is an easy caller mistake and would otherwise surface
+// as every field being undefined).
+let parsedArgs = args || {}
+if (typeof parsedArgs === 'string') {
+  try { parsedArgs = JSON.parse(parsedArgs) } catch (e) { parsedArgs = {} }
+}
+const { diffPath, storyPath, slug, archPath, epicsPath } = parsedArgs
 if (!diffPath || !storyPath || !slug) {
   throw new Error('story-cr-fanout requires args {diffPath, storyPath, slug, archPath, epicsPath}')
 }

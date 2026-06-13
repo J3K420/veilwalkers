@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bea7e0e993f3e194fbba134ff682591e, type: 3}
+  m_Name: EconomyConfig
+  m_EditorClassIdentifier:
+  _basicLureCost: 1
+  _premiumLureCost: 4
+  _multiLureCost: 5
+  _slayCost: 3
+  _xpPerCapture: 10
+  _xpPerSlay: 25
+  _levelXpThresholds:
+  - 100
+  - 250
+  - 450
+  - 700
+  - 1000
+  _strongCapturePerLevelUp: 1
+  _stabilityBoostPerLevelUp: 1
+  _nightveilFilterPerLevelUp: 1
+  _adDailyCap: 3
+  _telemetryRetentionDays: 30
