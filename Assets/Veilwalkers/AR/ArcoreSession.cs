@@ -28,35 +28,37 @@ namespace Veilwalkers.AR
     public sealed class ArcoreSession : IArSession
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // TODO(Story 3.4 / 6.3): wire to the scene-placed AR Foundation ARSession when the AR rig scene
+        // TODO(Story 6.3): wire to the scene-placed AR Foundation ARSession when the AR rig scene
         // lands. IsSupported → ARSession.state (Ready/SessionInitializing vs Unsupported/NeedsInstall);
         // StartAsync → enable the ARSession component + await the subsystem reaching a tracking-ready
         // state; Pause/Resume → ARSession.enabled toggle; Stop → ARSession.Reset()/disable. Until the
         // rig is placed there is no ARSession instance to drive, so these are conservative stubs that
         // never crash (NFR-3): report supported (the device IS Android) and no-op the toggles. The
         // ArSessionService lifecycle is proven against FakeArSession; this device glue is the deferred,
-        // device-only, CI-untestable edge (architecture.md:591).
+        // device-only, CI-untestable edge (architecture.md:591). Owner re-pointed from "Story 3.4 / 6.3"
+        // to Story 6.3 by Story 3.4 (which builds the plane/anchor LOGIC but no scene — the session AND
+        // plane/anchor/spawn subsystems all wire to the same not-yet-placed scene AR rig).
         public bool IsSupported => true;
 
         public Task StartAsync()
         {
-            GameLog.Info("ArcoreSession.StartAsync: device-path stub — the AR rig ARSession is not placed yet (TODO Story 3.4/6.3).");
+            GameLog.Info("ArcoreSession.StartAsync: device-path stub — the AR rig ARSession is not placed yet (TODO Story 6.3).");
             return Task.CompletedTask;
         }
 
         public void Pause()
         {
-            GameLog.Info("ArcoreSession.Pause: device-path stub (TODO Story 3.4/6.3).");
+            GameLog.Info("ArcoreSession.Pause: device-path stub (TODO Story 6.3).");
         }
 
         public void Resume()
         {
-            GameLog.Info("ArcoreSession.Resume: device-path stub (TODO Story 3.4/6.3).");
+            GameLog.Info("ArcoreSession.Resume: device-path stub (TODO Story 6.3).");
         }
 
         public void Stop()
         {
-            GameLog.Info("ArcoreSession.Stop: device-path stub (TODO Story 3.4/6.3).");
+            GameLog.Info("ArcoreSession.Stop: device-path stub (TODO Story 6.3).");
         }
 #else
         // Editor / non-Android: the AR Foundation subsystem does not exist. Report supported so the

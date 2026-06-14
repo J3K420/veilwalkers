@@ -203,6 +203,31 @@ namespace Veilwalkers.App
                 var arcoreSession = new ArcoreSession();
                 var arSessionService = new ArSessionService(arcoreSession, cameraPermissionFlow);
 
+                // AR world-anchoring + pooled spawning (Story 3.4, Veilwalkers.AR) — FR-4.
+                // PlaneAnchorService owns the place-on-a-detected-plane (AC-1) / coach-and-do-NOT-
+                // spawn-into-empty-space (AC-2) / never-throw-typed-result (NFR-3) DECISION behind the
+                // IArPlaneAnchorProvider seam; MonsterSpawner owns the NFR-1 object-pooling + concurrent-
+                // spawn-cap ACCOUNTING behind the ISpawnSink seam. Registered LIVE (like CameraPermissionFlow/
+                // ArSafetyGate/ArSessionService above): the production adapters' editor paths are stub-safe
+                // no-ops (ArcorePlaneAnchorProvider reports NO plane → the AC-2 coaching path; GameObjectSpawnSink
+                // returns synthetic ids), so construction never throws at boot. The adapters' #if UNITY_ANDROID
+                // device/scene glue (the real ARPlaneManager/ARAnchorManager/ARRaycastManager + the URP monster-
+                // prefab pool) is a TODO(Story 6.3) wired when the AR rig scene lands (decision #2) — the same
+                // not-yet-placed scene AR rig the ArcoreSession device glue waits on. The MonsterSpawner cap
+                // default (8) is a provisional tunable subject to the NFR-1 device-perf pass. The CONSUMER,
+                // ArPlacementView (Veilwalkers.UI), resolves PlaneAnchorService via GameServices.Get and degrades
+                // gracefully (inert RequestPlacement → coaching) while unplaced; placing it + the AR-HUD "tap/auto
+                // place" affordance + the coaching-banner pixels (the COPY is PlaneAnchorService.CoachingMessage,
+                // the styling is Epic 6) are Epic 6 (Story 6.3). PlaneAnchorService raises OnCoachingChanged for
+                // the Epic-6 banner; AC-1's real occlusion + environmental lighting are AR-rig-scene render
+                // features (Story 6.3 / Epic 6). The forward create-anchor surface (TryCreateAnchor) is absorbed
+                // into the architecture-named IArAnchorProvider by Story 3.5 (decision #6 — NOT a second seam).
+                // Both services' logic is fully proven headless by AR.Tests.
+                var planeAnchorProvider = new ArcorePlaneAnchorProvider();
+                var planeAnchorService = new PlaneAnchorService(planeAnchorProvider);
+                var spawnSink = new GameObjectSpawnSink();
+                var monsterSpawner = new MonsterSpawner(spawnSink);
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -239,6 +264,8 @@ namespace Veilwalkers.App
                 GameServices.Register<CameraPermissionFlow>(cameraPermissionFlow);
                 GameServices.Register<ArSafetyGate>(arSafetyGate);
                 GameServices.Register<ArSessionService>(arSessionService);
+                GameServices.Register<PlaneAnchorService>(planeAnchorService);
+                GameServices.Register<MonsterSpawner>(monsterSpawner);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
