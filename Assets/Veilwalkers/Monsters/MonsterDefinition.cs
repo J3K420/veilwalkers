@@ -4,7 +4,10 @@ using UnityEngine;
 // The EditMode test assembly populates an in-memory instance through the internal
 // SetForTests seam below. The Monsters.Tests asmdef references Veilwalkers.Monsters,
 // so this attribute is all that is required — no asmdef edit.
+// Veilwalkers.UI.Tests (Story 2.4) also authors in-memory definitions via SetForTests to
+// build the Codex grid presenter's test DB, so it is granted the same internals access.
 [assembly: InternalsVisibleTo("Veilwalkers.Monsters.Tests")]
+[assembly: InternalsVisibleTo("Veilwalkers.UI.Tests")]
 
 namespace Veilwalkers.Monsters
 {

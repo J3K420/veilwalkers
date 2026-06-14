@@ -161,6 +161,11 @@ namespace Veilwalkers.App
                 // `new CodexService(saveService, _monsterDatabase)` and
                 // `GameServices.Register<CodexService>(...)`. CodexService's logic is fully
                 // covered by Monsters.Tests, so leaving it unregistered blocks nothing.
+                // Story 2.4 added the first CONSUMER: CodexGridView (Veilwalkers.UI) resolves
+                // CodexService via GameServices.Get and degrades gracefully (inert grid) while
+                // it stays unregistered — so the view exists-but-inert until this seam closes.
+                // The grid's reveal LOGIC is fully proven headless by Veilwalkers.UI.Tests
+                // (CodexGridPresenter over a real CodexService), independent of this wiring.
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);

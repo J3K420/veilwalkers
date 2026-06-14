@@ -92,11 +92,71 @@ namespace Veilwalkers.Monsters
         }
 
         /// <summary>
-        /// The discovered ids, as a fresh read-only snapshot (never the live
-        /// <c>Dictionary.Keys</c> bound to internal state). Forward-leaning convenience for
-        /// the grid view (2.4).
+        /// The discovered ids, as a fresh read-only SNAPSHOT (never the live
+        /// <c>Dictionary.Keys</c> bound to internal state). A METHOD, not a property: each call
+        /// allocates a new list, so the method shape signals "this allocates / is a snapshot —
+        /// call it once" (the 2.3 CR <c>DiscoveredIds</c>-allocation deferral, settled in 2.4).
+        /// The grid presenter calls this ONCE per rebuild into a <c>HashSet</c>, so a single
+        /// allocation per rebuild is correct — no cache / invalidation is warranted at the real
+        /// call site.
         /// </summary>
-        public IReadOnlyCollection<string> DiscoveredIds => new List<string>(RequireModel().Codex.Keys);
+        public IReadOnlyCollection<string> GetDiscoveredIds() => new List<string>(RequireModel().Codex.Keys);
+
+        /// <summary>
+        /// The Dread-Ladder high-water mark: the maximum <see cref="Rarity"/> among discovered
+        /// <b>authored</b> Monsters, or <c>null</c> when NO discovered id is authored (a
+        /// brand-new player, OR a player who has only discovered unauthored reserved ids — an
+        /// unauthored discovery has no <see cref="Rarity"/> and so contributes nothing). Reads
+        /// the injected <see cref="MonsterDatabase"/> (the FIRST instance use — 2.3 used only the
+        /// two <c>static</c> members; the ctor null-check guarantees it is non-null). Pure read —
+        /// no lock (single-threaded gameplay, the 2.2/2.3 rationale).
+        /// </summary>
+        public Rarity? HighestDiscoveredRarity()
+        {
+            Rarity? highWater = null;
+            foreach (string id in RequireModel().Codex.Keys)
+            {
+                if (_database.TryGet(id, out MonsterDefinition def) && def != null)
+                {
+                    if (!highWater.HasValue || def.Rarity > highWater.Value)
+                    {
+                        highWater = def.Rarity;
+                    }
+                }
+            }
+
+            return highWater;
+        }
+
+        /// <summary>
+        /// The Dread-Ladder reveal rule (Story 2.4, AC-2): whether <paramref name="tier"/>'s
+        /// undiscovered slots should show as <c>???</c> silhouettes (begun: at or one tier above
+        /// the high-water mark) vs <c>?</c> blank (unreached). Begun ⇔ <c>(int)tier &lt;= floor +
+        /// 1</c>, where <c>floor</c> is the high-water mark's int value (or <c>-1</c> when no
+        /// authored id is discovered). With nothing discovered, only <see cref="Rarity.Common"/>
+        /// (value 0 = <c>-1 + 1</c>) is begun — a brand-new player sees authored Common slots as
+        /// silhouettes and everything above as blank ("one tier ahead of nothing = the first
+        /// tier"). No special-case at the top: once a <see cref="Rarity.Nightmare"/> is
+        /// discovered, <c>floor + 1 = 5</c> exceeds every tier, so all real tiers (0..4) are
+        /// begun. Epic 4 may later widen "begun" to include lure/scan-without-capture once that
+        /// signal is tracked; today discovery is the only signal. Pure read — no lock.
+        /// </summary>
+        public bool IsTierBegun(Rarity tier)
+        {
+            Rarity? highWater = HighestDiscoveredRarity();
+            int floor = highWater.HasValue ? (int)highWater.Value : -1;
+            return (int)tier <= floor + 1;
+        }
+
+        /// <summary>
+        /// The authored <see cref="Rarity"/> of <paramref name="id"/>, or <c>null</c> for a valid
+        /// reserved-but-unauthored universe id (mirrors <see cref="MonsterDatabase.TryGet"/>'s
+        /// safe-null). Routes the "what tier is this id" question through this service so the
+        /// catalog tier rule has ONE home (the presenter never touches
+        /// <see cref="MonsterDatabase"/> directly). Pure read — no lock.
+        /// </summary>
+        public Rarity? GetTier(string id) =>
+            _database.TryGet(id, out MonsterDefinition def) && def != null ? def.Rarity : (Rarity?)null;
 
         /// <summary>
         /// Record that <paramref name="id"/> was discovered <paramref name="via"/> Capture or

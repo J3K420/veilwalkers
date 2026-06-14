@@ -5,7 +5,10 @@ using UnityEngine;
 // The EditMode test assembly builds a registry through the internal SetForTests seam
 // below. The Monsters.Tests asmdef references Veilwalkers.Monsters, so this attribute is
 // all that is required — no asmdef edit. (Architecture.Tests adds its own Monsters ref.)
+// Veilwalkers.UI.Tests (Story 2.4) also builds in-memory registries via SetForTests to
+// drive the Codex grid presenter, so it is granted the same internals access.
 [assembly: InternalsVisibleTo("Veilwalkers.Monsters.Tests")]
+[assembly: InternalsVisibleTo("Veilwalkers.UI.Tests")]
 
 namespace Veilwalkers.Monsters
 {
