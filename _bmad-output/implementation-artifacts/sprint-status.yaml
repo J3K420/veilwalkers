@@ -72,7 +72,7 @@ development_status:
   3-3-own-the-ar-session-lifecycle-with-prewarm: done
   3-4-detect-planes-and-anchor-objects-with-occlusion-and-lighting: done
   3-5-save-and-restore-anchors-across-interruption: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: The Encounter Loop — Lure, Scan, Capture, Slay
   epic-4: backlog
