@@ -40,6 +40,10 @@ namespace Veilwalkers.Architecture.Tests
         // ledger persists through SaveService). Story 2.3 added the same edge to
         // Monsters' row (CodexService reads/writes SaveModel.Codex through SaveService)
         // — a same-tier sibling edge identical in shape to Economy → Persistence.
+        // Story 4.1 added "Veilwalkers.Persistence" to Encounter's row (the composed
+        // atomic action write persists through SaveService + mutates SaveModel — the
+        // same sibling→Persistence edge shape as Economy/Monsters; Persistence is BELOW
+        // Encounter in the one-way graph, so it is a legal downward edge).
         private static readonly Dictionary<string, string[]> AllowedReferences = new Dictionary<string, string[]>
         {
             { "Veilwalkers.Core", Array.Empty<string>() },
@@ -49,7 +53,11 @@ namespace Veilwalkers.Architecture.Tests
             { "Veilwalkers.AR", new[] { "Veilwalkers.Core" } },
             {
                 "Veilwalkers.Encounter",
-                new[] { "Veilwalkers.Core", "Veilwalkers.Economy", "Veilwalkers.Monsters", "Veilwalkers.AR" }
+                new[]
+                {
+                    "Veilwalkers.Core", "Veilwalkers.Persistence", "Veilwalkers.Economy",
+                    "Veilwalkers.Monsters", "Veilwalkers.AR"
+                }
             },
             { "Veilwalkers.Billing", new[] { "Veilwalkers.Core", "Veilwalkers.Economy" } },
             {

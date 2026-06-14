@@ -3,6 +3,7 @@
     "rootNamespace": "Veilwalkers.Encounter",
     "references": [
         "Veilwalkers.Core",
+        "Veilwalkers.Persistence",
         "Veilwalkers.Economy",
         "Veilwalkers.Monsters",
         "Veilwalkers.AR"

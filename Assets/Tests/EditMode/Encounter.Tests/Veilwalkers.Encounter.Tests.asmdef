@@ -1,0 +1,29 @@
+{
+    "name": "Veilwalkers.Encounter.Tests",
+    "rootNamespace": "Veilwalkers.Encounter.Tests",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Veilwalkers.Core",
+        "Veilwalkers.Persistence",
+        "Veilwalkers.Economy",
+        "Veilwalkers.Monsters",
+        "Veilwalkers.AR",
+        "Veilwalkers.Encounter"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -36,7 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-14
-# 3.5 created (final Epic-3 story)
+# 4.1 done (first Epic-4 story); epic-4 in-progress
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -75,8 +75,8 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: The Encounter Loop — Lure, Scan, Capture, Slay
-  epic-4: backlog
-  4-1-drive-the-encounter-with-an-explicit-state-machine: backlog
+  epic-4: in-progress
+  4-1-drive-the-encounter-with-an-explicit-state-machine: done
   4-2-lure-a-monster-basic-premium-multi: backlog
   4-3-scan-a-monster-for-free: backlog
   4-4-capture-a-monster-free-base-strong-capture: backlog

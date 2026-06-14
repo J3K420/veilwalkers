@@ -258,6 +258,24 @@ namespace Veilwalkers.App
                 // fully proven headless by Veilwalkers.UI.Tests (CodexGridPresenter +
                 // CodexDetailPresenter over a real CodexService), independent of this wiring.
 
+                // EncounterService (Story 4.1, Veilwalkers.Encounter) — registration SEAM, not wired this
+                // story (decision J1). It is the encounter spine: it drives the EncounterStateMachine, owns the
+                // AC-2 atomic multi-delta write (charge/credit AND codex in ONE SaveAsync under the SHARED
+                // economyMutationLock), and wires OnArSessionInterrupted → Suspended → recovery TryRestore
+                // (AC-3). Wiring is deferred for the SAME reason as CodexService above: EncounterService needs
+                // a CodexService, which needs a MonsterDatabase instance whose .asset is unauthored (the Story
+                // 2.2 [~] deferral). To close the seam once MonsterDatabase.asset + CodexService land:
+                // `var encounterService = new EncounterService(saveService, creditService, progressionService,
+                //   codexService, economyMutationLock, anchorRestoreService, arSessionService);` then
+                // `GameServices.Register<EncounterService>(encounterService);`. CRITICAL: pass the SAME
+                // economyMutationLock constructed above (shared with CreditService/ProgressionService) — the
+                // composed Encounter write MUST serialize against plain Economy writes (that is the whole point
+                // of the shared lock; a private lock would let a composed action interleave with a credit
+                // spend and durably persist each other's uncommitted delta). EncounterService's logic is fully
+                // proven headless by Veilwalkers.Encounter.Tests over real Economy services + a real CodexService
+                // (in-memory MonsterDatabase), independent of this wiring — so leaving it unregistered blocks
+                // nothing. The FR-6–10 per-action public methods + their UI callers are Stories 4.2–4.6 / Epic 6.
+
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);
                 GameServices.Register<SaveService>(saveService);

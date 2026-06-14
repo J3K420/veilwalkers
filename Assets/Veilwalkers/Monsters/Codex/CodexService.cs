@@ -330,6 +330,94 @@ namespace Veilwalkers.Monsters
             return result;
         }
 
+        /// <summary>
+        /// Stage a discovery's IN-MEMORY codex mutation WITHOUT taking this service's lock and WITHOUT
+        /// persisting — for the Story 4.1 composed Encounter write ONLY, which mutates the economy slice AND
+        /// this codex slice in ONE <c>SaveService.SaveAsync</c> under the shared Economy lock (AR-8: one
+        /// atomic write per action). The composed write owns the lock + the single persist; this method just
+        /// applies the codex delta to <paramref name="model"/> using the SAME rules as
+        /// <see cref="RecordDiscoveryAsync"/> (idempotency by key-presence, set-only-the-matching-flag, the
+        /// first-discovery date stamp) so the codex-write rules have ONE home (no duplication in Encounter).
+        /// <para>
+        /// Returns a <see cref="CodexStage"/> the caller holds: it carries whether this was a first discovery
+        /// (so the caller raises <see cref="OnMonsterDiscovered"/> via <see cref="RaiseStagedDiscovery"/> only
+        /// after the persist commits), the resulting count, and — critically — a <see cref="CodexStage.Revert"/>
+        /// that restores the EXACT pre-mutation state (the three cases of <see cref="RollBack"/>:
+        /// key-absent → remove; flag-flip on a real entry → clear; null-valued key → re-seat null) if the
+        /// composed persist FAILS. A naive <c>model.Codex.Remove(id)</c> revert is a bug (it would delete a
+        /// pre-existing entry on a flag-flip rollback) — the staged revert mirrors <see cref="RollBack"/>.
+        /// </para>
+        /// <para>
+        /// Throws <see cref="ArgumentNullException"/>/<see cref="ArgumentException"/> for a null model or an
+        /// invalid id (programmer error, same as <see cref="RecordDiscoveryAsync"/>). NOT lock-protected:
+        /// the CALLER (the Encounter composed write) must hold the shared Economy lock around the stage +
+        /// persist span. Gameplay is single-threaded, so the lone codex writer plus the composed writer
+        /// cannot actually interleave (the [[codex-service-lock-tier]] rationale).
+        /// </para>
+        /// </summary>
+        public CodexStage StageDiscovery(SaveModel model, string id, DiscoverySource via)
+        {
+            if (model == null)
+            {
+                throw new ArgumentNullException(nameof(model));
+            }
+
+            if (string.IsNullOrEmpty(id) || !MonsterDatabase.IsValidMonsterId(id))
+            {
+                throw new ArgumentException(
+                    $"'{id}' is not a valid Monster id (expected mon01..mon{MonsterDatabase.UniverseCount:00}).",
+                    nameof(id));
+            }
+
+            // Same idempotency + first-discovery detection as RecordDiscoveryAsync (key presence == discovered).
+            bool keyPreExisted = model.Codex.TryGetValue(id, out CodexEntryData existing);
+            bool isFirstDiscovery = !keyPreExisted;
+            bool flagAlreadySet = existing != null && IsFlagSet(existing, via);
+
+            if (keyPreExisted && existing != null && flagAlreadySet)
+            {
+                // Pure no-op: nothing to revert, nothing to raise. The composed write still persists its
+                // economy slice (the action may have a charge/credit delta), so this is NOT short-circuited
+                // at the caller — it just means the codex slice contributes no change and no rollback.
+                return CodexStage.NoOp(model.Codex.Count);
+            }
+
+            // Capture the exact pre-mutation state for the revert (mirrors RecordDiscoveryAsync).
+            CodexEntryData priorEntry = existing;
+
+            CodexEntryData entry = existing;
+            if (entry == null)
+            {
+                entry = new CodexEntryData();
+                entry.Discovered = _clock.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                model.Codex[id] = entry;
+            }
+
+            SetFlag(entry, via, true);
+
+            return CodexStage.Create(this, model, id, via, keyPreExisted, priorEntry, entry, isFirstDiscovery, model.Codex.Count);
+        }
+
+        /// <summary>
+        /// Raise <see cref="OnMonsterDiscovered"/> (and <see cref="OnCodexCompleted"/> on 67/67) for a staged
+        /// discovery whose composed persist has COMMITTED — the events live with CodexService (one home) but
+        /// the composed Encounter write decides WHEN to raise them (after its single persist commits, outside
+        /// the lock). Only raises on a committed FIRST discovery, mirroring <see cref="RecordDiscoveryAsync"/>.
+        /// </summary>
+        internal void RaiseStagedDiscovery(string id, bool isFirstDiscovery, int newCount)
+        {
+            if (!isFirstDiscovery)
+            {
+                return;
+            }
+
+            RaiseMonsterDiscovered(id);
+            if (newCount == UniverseCount)
+            {
+                RaiseCodexCompleted();
+            }
+        }
+
         private static bool IsFlagSet(CodexEntryData entry, DiscoverySource via) =>
             via == DiscoverySource.Capture ? entry.Captured : entry.Slain;
 
@@ -422,6 +510,92 @@ namespace Veilwalkers.Monsters
             }
 
             return model;
+        }
+
+        /// <summary>
+        /// A staged-but-not-persisted codex mutation produced by <see cref="StageDiscovery"/>, for the Story
+        /// 4.1 composed Encounter write. The composed write holds this between mutating the model and the
+        /// single <c>SaveService.SaveAsync</c>: on a persist FAULT it calls <see cref="Revert"/> (restores the
+        /// exact pre-mutation codex state — the three <see cref="RollBack"/> cases); on a COMMIT it raises the
+        /// discovery events via <see cref="RaiseCommittedEvents"/>. A nested type so it can reach the private
+        /// <see cref="RollBack"/>/<see cref="RaiseStagedDiscovery"/> — the codex rules stay in CodexService.
+        /// </summary>
+        public readonly struct CodexStage
+        {
+            private readonly CodexService _service;
+            private readonly SaveModel _model;
+            private readonly string _id;
+            private readonly DiscoverySource _via;
+            private readonly bool _keyPreExisted;
+            private readonly CodexEntryData _priorEntry;
+            private readonly CodexEntryData _mutatedEntry;
+            private readonly bool _applied;
+
+            /// <summary>True when this stage actually changed the codex (a first discovery or a flag flip).
+            /// False for a no-op (the flag was already set) — <see cref="Revert"/>/<see cref="RaiseCommittedEvents"/>
+            /// then do nothing.</summary>
+            public bool Applied => _applied;
+
+            /// <summary>True when this stage is a brand-new first discovery (drives the post-commit event raise).</summary>
+            public bool IsFirstDiscovery { get; }
+
+            /// <summary>The codex count after the staged mutation (the live <c>SaveModel.Codex.Count</c>).</summary>
+            public int Count { get; }
+
+            private CodexStage(
+                CodexService service, SaveModel model, string id, DiscoverySource via, bool keyPreExisted,
+                CodexEntryData priorEntry, CodexEntryData mutatedEntry, bool isFirstDiscovery, int count, bool applied)
+            {
+                _service = service;
+                _model = model;
+                _id = id;
+                _via = via;
+                _keyPreExisted = keyPreExisted;
+                _priorEntry = priorEntry;
+                _mutatedEntry = mutatedEntry;
+                IsFirstDiscovery = isFirstDiscovery;
+                Count = count;
+                _applied = applied;
+            }
+
+            internal static CodexStage NoOp(int count) =>
+                new CodexStage(null, null, null, default, false, null, null, false, count, false);
+
+            internal static CodexStage Create(
+                CodexService service, SaveModel model, string id, DiscoverySource via, bool keyPreExisted,
+                CodexEntryData priorEntry, CodexEntryData mutatedEntry, bool isFirstDiscovery, int count) =>
+                new CodexStage(service, model, id, via, keyPreExisted, priorEntry, mutatedEntry, isFirstDiscovery, count, true);
+
+            /// <summary>
+            /// Restore the EXACT pre-mutation codex state on a persist fault (the three <see cref="RollBack"/>
+            /// cases). A no-op stage does nothing. The composed write calls this inside its rollback path,
+            /// alongside reverting its economy slice.
+            /// </summary>
+            public void Revert()
+            {
+                if (!_applied)
+                {
+                    return;
+                }
+
+                RollBack(_model, _id, _keyPreExisted, _priorEntry, _mutatedEntry, _via);
+            }
+
+            /// <summary>
+            /// Raise the discovery events (<see cref="OnMonsterDiscovered"/>, then <see cref="OnCodexCompleted"/>
+            /// on 67/67) for a COMMITTED first discovery — the composed write calls this AFTER its single
+            /// persist commits and the shared lock is released. A no-op stage / a non-first-discovery raises
+            /// nothing.
+            /// </summary>
+            public void RaiseCommittedEvents()
+            {
+                if (!_applied)
+                {
+                    return;
+                }
+
+                _service.RaiseStagedDiscovery(_id, IsFirstDiscovery, Count);
+            }
         }
     }
 }
