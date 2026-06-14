@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-10
-last_updated: 2026-06-15
+last_updated: 2026-06-13
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   # Epic 3: AR Mode — Safety, Camera & World Anchoring
   epic-3: in-progress
   3-1-disclose-and-request-camera-permission-gracefully: done
-  3-2-gate-ar-entry-behind-the-mandatory-safety-warning: backlog
+  3-2-gate-ar-entry-behind-the-mandatory-safety-warning: done
   3-3-own-the-ar-session-lifecycle-with-prewarm: backlog
   3-4-detect-planes-and-anchor-objects-with-occlusion-and-lighting: backlog
   3-5-save-and-restore-anchors-across-interruption: backlog

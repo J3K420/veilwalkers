@@ -161,6 +161,23 @@ namespace Veilwalkers.App
                 // Story 3.2, the session lifecycle Story 3.3).
                 var cameraPermissionFlow = new CameraPermissionFlow(new AndroidCameraPermission());
 
+                // AR Safety Warning gate (Story 3.2, Veilwalkers.AR) — the FR-3 mandatory warning.
+                // The full-read-first-per-session / fast-card-thereafter / skip-on-Shop-resume
+                // decision + the MayInteract block predicate (AC-1) behind a pure-logic gate.
+                // Registered LIVE (like CameraPermissionFlow above): it has NO constructor dependency
+                // (pure session-scoped state — no clock, no save, no seam, no persistence per the
+                // story's decision #4), so construction never throws at boot. The CONSUMER,
+                // ArSafetyView (Veilwalkers.UI), resolves this via GameServices.Get and degrades
+                // gracefully while unplaced; placing that view + supplying the ArEntryKind from
+                // AR-entry routing is Epic 6 (Story 6.3). The camera/Lure/Encounter surfaces that
+                // READ MayInteract (so AC-1's "not interactive until acknowledged" is enforced) live
+                // in Epic 4/6. The gate's logic is fully proven headless by AR.Tests. This story
+                // stops at "warning acknowledged → may proceed"; it does NOT start the AR session
+                // (Story 3.3). It is intentionally INDEPENDENT of cameraPermissionFlow — the order
+                // "permission → safety gate → session" is the caller's sequencing (3.3/6.3), not a
+                // gate-to-flow dependency.
+                var arSafetyGate = new ArSafetyGate();
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -195,6 +212,7 @@ namespace Veilwalkers.App
                 GameServices.Register<ITelemetryStore>(telemetryStore);
                 GameServices.Register<ITelemetrySink>(telemetrySink);
                 GameServices.Register<CameraPermissionFlow>(cameraPermissionFlow);
+                GameServices.Register<ArSafetyGate>(arSafetyGate);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
