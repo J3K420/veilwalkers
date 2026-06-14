@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using UnityEngine;
+using Veilwalkers.AR;
 using Veilwalkers.Core;
 using Veilwalkers.Economy;
 using Veilwalkers.Persistence;
@@ -147,6 +148,19 @@ namespace Veilwalkers.App
                 var firstZeroCreditRecorder = new FirstZeroCreditRecorder(
                     saveService, economyMutationLock, clock);
 
+                // Camera-permission flow (Story 3.1, Veilwalkers.AR) — the FIRST AR-area service.
+                // The disclose→prompt→denied→re-grant decision (FR-5) behind the ICameraPermission
+                // platform seam. Registered LIVE (unlike CodexService below): it has no
+                // unauthored-asset blocker — AndroidCameraPermission is the platform adapter
+                // (real on Android, a logged no-op off-device), so construction never throws at
+                // boot. The CONSUMER, CameraPermissionView (Veilwalkers.UI), resolves this via
+                // GameServices.Get and degrades gracefully while unplaced; placing that view in a
+                // scene + routing AR entry from it is Epic 6 (Story 6.3/6.4). The flow's logic is
+                // fully proven headless by AR.Tests. This story stops at "permission resolved →
+                // may proceed / denied → re-grant"; it does NOT own AR entry (the safety gate is
+                // Story 3.2, the session lifecycle Story 3.3).
+                var cameraPermissionFlow = new CameraPermissionFlow(new AndroidCameraPermission());
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -180,6 +194,7 @@ namespace Veilwalkers.App
                 GameServices.Register<IDailyRewardService>(dailyRewardService);
                 GameServices.Register<ITelemetryStore>(telemetryStore);
                 GameServices.Register<ITelemetrySink>(telemetrySink);
+                GameServices.Register<CameraPermissionFlow>(cameraPermissionFlow);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
