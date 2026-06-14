@@ -4,7 +4,7 @@ baseline_commit: "a16345fcdb50b1708c6147fab7ceb10a6862ca5f"
 
 # Story 2.4: Browse the 67-grid with hybrid gradual reveal
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -255,3 +255,4 @@ claude-opus-4-8 (Amelia, dev-story workflow).
 ### Change Log
 
 - 2026-06-13 — Story 2.4 implemented (192/192 headless green). Added the Codex 67-grid reveal read model: `CodexService` reveal members + `DiscoveredIds`→`GetDiscoveredIds()` reshape (settles the 2.3 deferral), the pure-logic `CodexGridPresenter` + `CodexSlot`/`CodexSlotState` in `Veilwalkers.UI`, and the thin `CodexGridView` (graceful-degrade, symmetric subscribe). New `Veilwalkers.UI.Tests` EditMode assembly (8 presenter tests) + 7 `CodexService` reveal-model tests. Visual render deferred to Epic 6. Status → review.
+- 2026-06-13 — Code review (story-cr-fanout, 3-layer adversarial, 28 findings → 1 patch / 1 defer / 26 spec-sanctioned / 0 false-positive / 0 AC violation). **Patched** the one confirmed finding: `CodexGridPresenter.BuildSlots` recomputed the rarity high-water mark up to 67× per rebuild (O(slots × discovered)) — now computes the floor ONCE and passes it to a new `CodexService.IsTierBegun(tier, floor)` overload (the floor-less `IsTierBegun(tier)` delegates to it; behavior identical). **Deferred** the residual service-layer `HighestDiscoveredRarity` per-id `TryGet` (uncached across calls) to a future Encounter/perf story (recorded in deferred-work.md). Re-ran headless: 192/192 green, 0 `error CS`, UI.Tests genuinely ran. Status → done.

@@ -145,8 +145,19 @@ namespace Veilwalkers.Monsters
         {
             Rarity? highWater = HighestDiscoveredRarity();
             int floor = highWater.HasValue ? (int)highWater.Value : -1;
-            return (int)tier <= floor + 1;
+            return IsTierBegun(tier, floor);
         }
+
+        /// <summary>
+        /// The same Dread-Ladder reveal rule as <see cref="IsTierBegun(Rarity)"/>, but against a
+        /// caller-supplied <paramref name="floor"/> (the high-water mark's int value, or <c>-1</c>
+        /// when no authored id is discovered). The high-water mark is invariant across a single
+        /// grid rebuild, so the grid presenter computes it ONCE via
+        /// <see cref="HighestDiscoveredRarity"/> and passes the floor here per slot — avoiding an
+        /// O(slots × discovered) re-scan of the discovery dictionary on every rebuild (the 2.4 CR
+        /// efficiency finding). Pure read — no lock.
+        /// </summary>
+        public bool IsTierBegun(Rarity tier, int floor) => (int)tier <= floor + 1;
 
         /// <summary>
         /// The authored <see cref="Rarity"/> of <paramref name="id"/>, or <c>null</c> for a valid

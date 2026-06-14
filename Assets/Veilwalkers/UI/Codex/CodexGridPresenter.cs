@@ -67,6 +67,13 @@ namespace Veilwalkers.UI
             // not IsDiscovered 67×. GetDiscoveredIds() is the settled-2.3 snapshot method.
             var discovered = new HashSet<string>(_codex.GetDiscoveredIds());
 
+            // The high-water mark is invariant across this rebuild — compute it ONCE (one scan of
+            // the discovery data) and pass the floor to IsTierBegun per slot, rather than letting
+            // each authored-undiscovered slot re-scan via the floor-less overload (the 2.4 CR
+            // efficiency finding: that was O(slots × discovered) per rebuild).
+            Rarity? highWater = _codex.HighestDiscoveredRarity();
+            int floor = highWater.HasValue ? (int)highWater.Value : -1;
+
             int universe = _codex.UniverseCount;
             var slots = new List<CodexSlot>(universe);
 
@@ -88,7 +95,7 @@ namespace Veilwalkers.UI
                     // reserved-slot rule). Grows to ??? organically as content is authored.
                     state = CodexSlotState.Blank;
                 }
-                else if (_codex.IsTierBegun(tier.Value))
+                else if (_codex.IsTierBegun(tier.Value, floor))
                 {
                     // Authored and in a begun tier (at or one tier above the high-water).
                     state = CodexSlotState.Silhouette;
