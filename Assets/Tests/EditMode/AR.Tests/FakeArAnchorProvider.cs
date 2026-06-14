@@ -5,14 +5,16 @@ using Veilwalkers.Core.Contracts;
 namespace Veilwalkers.AR.Tests
 {
     /// <summary>
-    /// Test double for <see cref="IArPlaneAnchorProvider"/> (Story 3.4). Mirrors <see cref="FakeArSession"/>/
-    /// <see cref="FakeCameraPermission"/>: settable state the test flips to model "no plane" / "plane but
-    /// no pose" / "anchor fails", plus call counters so a test can prove <see cref="PlaneAnchorService"/>
-    /// did NOT ask for a pose / create an anchor when there was no plane (the AC-2 "no object spawned into
-    /// empty space" pin). No AR-Foundation types — only <see cref="Pose"/> — so the placement logic is
-    /// platform-independent and proven entirely here.
+    /// Test double for <see cref="IArAnchorProvider"/> (Story 3.4 forward + Story 3.5 restore). Mirrors
+    /// <see cref="FakeArSession"/>/<see cref="FakeCameraPermission"/>: settable state the test flips to
+    /// model the forward cases ("no plane" / "plane but no pose" / "anchor fails") AND the restore cases
+    /// ("re-acquire succeeds/fails" / the relocation candidate set), plus call counters so a test can
+    /// prove <see cref="PlaneAnchorService"/> / <see cref="AnchorRestoreService"/> called the seam exactly
+    /// when expected (the AC-2 "no spawn without a plane" pin; the AC-2/3 "no re-acquire on an invalid
+    /// token" + "no relocation query when Restored" pins). No AR-Foundation types — only <see cref="Pose"/>
+    /// and <see cref="PlaneCandidate"/> — so the logic is platform-independent and proven entirely here.
     /// </summary>
-    internal sealed class FakeArPlaneAnchorProvider : IArPlaneAnchorProvider
+    internal sealed class FakeArAnchorProvider : IArAnchorProvider
     {
         /// <summary>Settable plane-tracking state the service reads to decide coach-vs-place.</summary>
         public bool HasTrackablePlane { get; set; }
@@ -76,6 +78,48 @@ namespace Veilwalkers.AR.Tests
             // test pinned an explicit TokenToReturn.
             token = TokenToReturn ?? new AnchorToken(planeId, pose.position, pose.rotation);
             return true;
+        }
+
+        // ---- Restore path (Story 3.5) ----
+
+        /// <summary>When true, <see cref="TryReacquireAnchor"/> succeeds and hands back
+        /// <see cref="ReacquiredPose"/>; when false it fails (anchor lost → the service relocates).</summary>
+        public bool ReacquireSucceeds { get; set; }
+
+        /// <summary>The pose <see cref="TryReacquireAnchor"/> returns on success.</summary>
+        public Pose ReacquiredPose { get; set; } = new Pose(new Vector3(9f, 9f, 9f), Quaternion.identity);
+
+        /// <summary>The relocation candidates <see cref="TryGetRelocationCandidates"/> hands back. Empty
+        /// (default) models "no plane available" → the service returns Failed.</summary>
+        public PlaneCandidate[] RelocationCandidates { get; set; } = System.Array.Empty<PlaneCandidate>();
+
+        /// <summary>How many times the service tried to re-acquire the anchor. The invalid-token pin
+        /// asserts this stays 0 (no native re-acquire on a junk/None token).</summary>
+        public int ReacquireCalls { get; private set; }
+
+        /// <summary>How many times the service queried relocation candidates. The Restored pin asserts
+        /// this stays 0 (no relocation query when the re-acquire succeeded).</summary>
+        public int GetRelocationCandidatesCalls { get; private set; }
+
+        public bool TryReacquireAnchor(in AnchorToken token, out Pose pose)
+        {
+            ReacquireCalls++;
+
+            if (!ReacquireSucceeds)
+            {
+                pose = Pose.identity;
+                return false;
+            }
+
+            pose = ReacquiredPose;
+            return true;
+        }
+
+        public bool TryGetRelocationCandidates(out PlaneCandidate[] candidates)
+        {
+            GetRelocationCandidatesCalls++;
+            candidates = RelocationCandidates;
+            return RelocationCandidates != null && RelocationCandidates.Length > 0;
         }
     }
 }

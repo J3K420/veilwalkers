@@ -10,7 +10,7 @@ namespace Veilwalkers.AR.Tests
     /// <summary>
     /// EditMode tests for <see cref="PlaneAnchorService"/> (Story 3.4) — the AC-1 place-on-a-detected-plane,
     /// the AC-2 coach-and-do-NOT-spawn-into-empty-space, and the NFR-3 never-throw-typed-result decision.
-    /// A controllable <see cref="FakeArPlaneAnchorProvider"/> drives all state.
+    /// A controllable <see cref="FakeArAnchorProvider"/> drives all state.
     /// <para>
     /// Anti-tautology: every assertion checks the PRODUCTION service's typed result + the fake's SEAM CALL
     /// COUNTS (GetPlacementPoseCalls/CreateAnchorCalls), never a literal recomputed from the same input.
@@ -21,7 +21,7 @@ namespace Veilwalkers.AR.Tests
     /// </summary>
     public sealed class PlaneAnchorServiceTests
     {
-        private static PlaneAnchorService NewService(FakeArPlaneAnchorProvider provider)
+        private static PlaneAnchorService NewService(FakeArAnchorProvider provider)
             => new PlaneAnchorService(provider);
 
         // ---- ctor guard ----
@@ -37,7 +37,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void No_plane_returns_coaching_with_the_production_message()
         {
-            var provider = new FakeArPlaneAnchorProvider { HasTrackablePlane = false };
+            var provider = new FakeArAnchorProvider { HasTrackablePlane = false };
             var service = NewService(provider);
 
             PlacementResult result = service.TryPlace();
@@ -50,7 +50,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void No_plane_does_NOT_ask_for_a_pose_or_create_an_anchor()
         {
-            var provider = new FakeArPlaneAnchorProvider { HasTrackablePlane = false };
+            var provider = new FakeArAnchorProvider { HasTrackablePlane = false };
             var service = NewService(provider);
 
             service.TryPlace();
@@ -68,7 +68,7 @@ namespace Veilwalkers.AR.Tests
         public void Plane_and_pose_and_successful_anchor_returns_placed_with_the_token()
         {
             var pose = new Pose(new Vector3(4f, 5f, 6f), Quaternion.Euler(0f, 90f, 0f));
-            var provider = new FakeArPlaneAnchorProvider
+            var provider = new FakeArAnchorProvider
             {
                 HasTrackablePlane = true,
                 HasPlacementPose = true,
@@ -94,7 +94,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void Plane_but_no_placement_pose_returns_coaching_without_creating_an_anchor()
         {
-            var provider = new FakeArPlaneAnchorProvider
+            var provider = new FakeArAnchorProvider
             {
                 HasTrackablePlane = true,
                 HasPlacementPose = false,
@@ -114,7 +114,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void Anchor_creation_failure_returns_failed_and_logs_a_warning_without_throwing()
         {
-            var provider = new FakeArPlaneAnchorProvider
+            var provider = new FakeArAnchorProvider
             {
                 HasTrackablePlane = true,
                 HasPlacementPose = true,
@@ -139,7 +139,7 @@ namespace Veilwalkers.AR.Tests
         public void Pose_with_a_null_plane_id_round_trips_without_throwing()
         {
             var pose = new Pose(new Vector3(7f, 8f, 9f), Quaternion.identity);
-            var provider = new FakeArPlaneAnchorProvider
+            var provider = new FakeArAnchorProvider
             {
                 HasTrackablePlane = true,
                 HasPlacementPose = true,
@@ -161,7 +161,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void Coaching_event_fires_the_message_on_enter_and_clears_on_placement()
         {
-            var provider = new FakeArPlaneAnchorProvider { HasTrackablePlane = false };
+            var provider = new FakeArAnchorProvider { HasTrackablePlane = false };
             var service = NewService(provider);
 
             string lastMessage = "unset";
@@ -192,7 +192,7 @@ namespace Veilwalkers.AR.Tests
         [Test]
         public void Anchor_creation_failure_clears_a_standing_coaching_banner()
         {
-            var provider = new FakeArPlaneAnchorProvider { HasTrackablePlane = false };
+            var provider = new FakeArAnchorProvider { HasTrackablePlane = false };
             var service = NewService(provider);
 
             string lastMessage = "unset";

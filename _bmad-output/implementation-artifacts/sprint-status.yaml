@@ -36,6 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-14
+# 3.5 created (final Epic-3 story)
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +71,7 @@ development_status:
   3-2-gate-ar-entry-behind-the-mandatory-safety-warning: done
   3-3-own-the-ar-session-lifecycle-with-prewarm: done
   3-4-detect-planes-and-anchor-objects-with-occlusion-and-lighting: done
-  3-5-save-and-restore-anchors-across-interruption: backlog
+  3-5-save-and-restore-anchors-across-interruption: done
   epic-3-retrospective: optional
 
   # Epic 4: The Encounter Loop — Lure, Scan, Capture, Slay

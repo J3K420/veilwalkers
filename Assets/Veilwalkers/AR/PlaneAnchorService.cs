@@ -7,19 +7,19 @@ namespace Veilwalkers.AR
     /// The plane-anchor placement + coaching decision owner (Story 3.4, FR-4 — the "anchoring + guidance"
     /// home, architecture.md:408). Plain C# (NO <c>MonoBehaviour</c>, no Unity types beyond what the seam
     /// exposes) so the placement/coaching DECISION is headless-tested against a fake
-    /// <see cref="IArPlaneAnchorProvider"/>. Mirrors the pure-logic <see cref="ArSessionService"/>/
+    /// <see cref="IArAnchorProvider"/>. Mirrors the pure-logic <see cref="ArSessionService"/>/
     /// <see cref="CameraPermissionFlow"/>/<see cref="ArSafetyGate"/> shape.
     /// <para>
     /// <b>Decision #2 — pure-logic decision + thin adapter.</b> The placement/coaching DECISIONS live
-    /// here; the OS-touching plane/anchor glue lives in <see cref="IArPlaneAnchorProvider"/>/
-    /// <see cref="ArcorePlaneAnchorProvider"/> (no branching beyond the platform <c>#if</c>). This
+    /// here; the OS-touching plane/anchor glue lives in <see cref="IArAnchorProvider"/>/
+    /// <see cref="ArcoreAnchorProvider"/> (no branching beyond the platform <c>#if</c>). This
     /// reconciles "PlaneAnchorService owns anchoring + guidance" with the AR "thin adapter, zero branching
     /// logic" mandate (architecture.md:466) — identical to how 3.3 split <see cref="ArSessionService"/>
     /// from <see cref="ArcoreSession"/>.
     /// </para>
     /// <para>
     /// <b>Decision #3 — "no object is spawned into empty space" (AC-2) is a load-bearing guard.</b>
-    /// <see cref="TryPlace"/> checks <see cref="IArPlaneAnchorProvider.HasTrackablePlane"/> FIRST and
+    /// <see cref="TryPlace"/> checks <see cref="IArAnchorProvider.HasTrackablePlane"/> FIRST and
     /// refuses to even ASK for a placement pose / create an anchor when no plane is tracked. The pin is
     /// that the provider's pose/anchor methods are NOT called when there is no plane — see
     /// <c>PlaneAnchorServiceTests</c>.
@@ -43,7 +43,7 @@ namespace Veilwalkers.AR
         /// </summary>
         public const string CoachingMessage = "Move your phone slowly across a textured surface";
 
-        private readonly IArPlaneAnchorProvider _provider;
+        private readonly IArAnchorProvider _provider;
 
         /// <summary>
         /// Raised when the coaching message changes: a non-null/empty message when entering
@@ -58,7 +58,7 @@ namespace Veilwalkers.AR
         // change (entering coaching from placed, or vice-versa), not on every repeated coaching frame.
         private string _lastCoaching;
 
-        public PlaneAnchorService(IArPlaneAnchorProvider provider)
+        public PlaneAnchorService(IArAnchorProvider provider)
         {
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         }
