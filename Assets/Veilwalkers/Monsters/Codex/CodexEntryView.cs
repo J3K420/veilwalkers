@@ -31,6 +31,12 @@ namespace Veilwalkers.Monsters
         public bool Captured { get; }
         public bool Slain { get; }
 
+        /// <summary>The first-discovered date as an ISO-8601 <c>yyyy-MM-dd</c> string, or
+        /// <c>null</c> for the <see cref="NotDiscovered"/> sentinel OR a pre-2.5 save whose
+        /// entry predates the field (a legitimate "unknown date" state, not a defect). The
+        /// detail view (Story 2.5) renders a null date as empty/"—".</summary>
+        public string Discovered { get; }
+
         /// <summary>A defensive, read-only snapshot of the entry's variant flags. Never
         /// null (empty for a not-discovered sentinel or an entry with no variants), and
         /// never aliases the persisted list.</summary>
@@ -38,13 +44,14 @@ namespace Veilwalkers.Monsters
 
         private CodexEntryView(
             bool isDiscovered, string id, bool scanned, bool captured, bool slain,
-            IReadOnlyList<string> variantFlags)
+            string discovered, IReadOnlyList<string> variantFlags)
         {
             IsDiscovered = isDiscovered;
             Id = id;
             Scanned = scanned;
             Captured = captured;
             Slain = slain;
+            Discovered = discovered;
             VariantFlags = variantFlags;
         }
 
@@ -68,7 +75,7 @@ namespace Veilwalkers.Monsters
             }
 
             return new CodexEntryView(
-                true, id, data.Scanned, data.Captured, data.Slain,
+                true, id, data.Scanned, data.Captured, data.Slain, data.Discovered,
                 new ReadOnlyCollection<string>(flagsCopy));
         }
 
@@ -79,7 +86,7 @@ namespace Veilwalkers.Monsters
         /// </summary>
         internal static CodexEntryView NotDiscovered(string id) =>
             new CodexEntryView(
-                false, id, false, false, false,
+                false, id, false, false, false, null,
                 new ReadOnlyCollection<string>(new List<string>()));
     }
 }

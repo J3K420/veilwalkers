@@ -158,14 +158,19 @@ namespace Veilwalkers.App
                 // To close the seam once MonsterDatabase.asset exists: add
                 // `using Veilwalkers.Monsters;` + `[SerializeField] private MonsterDatabase
                 // _monsterDatabase;` (null-checked like _economyConfig), then
-                // `new CodexService(saveService, _monsterDatabase)` and
+                // `new CodexService(saveService, _monsterDatabase, clock)` (the IClock — already
+                // in scope, registered below at GameServices.Register<IClock> — was added in
+                // Story 2.5 to stamp the first-discovered date on the Codex entry) and
                 // `GameServices.Register<CodexService>(...)`. CodexService's logic is fully
                 // covered by Monsters.Tests, so leaving it unregistered blocks nothing.
                 // Story 2.4 added the first CONSUMER: CodexGridView (Veilwalkers.UI) resolves
                 // CodexService via GameServices.Get and degrades gracefully (inert grid) while
                 // it stays unregistered — so the view exists-but-inert until this seam closes.
-                // The grid's reveal LOGIC is fully proven headless by Veilwalkers.UI.Tests
-                // (CodexGridPresenter over a real CodexService), independent of this wiring.
+                // Story 2.5 added a SECOND consumer: CodexDetailView (Veilwalkers.UI), which
+                // degrades identically (an inert Open(id) no-ops + warns) until the seam closes.
+                // The grid's reveal LOGIC and the detail panel's content/reveal LOGIC are both
+                // fully proven headless by Veilwalkers.UI.Tests (CodexGridPresenter +
+                // CodexDetailPresenter over a real CodexService), independent of this wiring.
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IProgressStore>(progressStore);

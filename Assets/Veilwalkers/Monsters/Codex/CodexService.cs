@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Veilwalkers.Core;
@@ -43,6 +44,11 @@ namespace Veilwalkers.Monsters
         private readonly SaveService _saveService;
         private readonly MonsterDatabase _database;
 
+        // The time seam (AR-18). Used ONLY to stamp the first-discovered date on the
+        // first-discovery create path (Story 2.5); mirrors DailyRewardService's IClock use.
+        // All persisted time is an ISO yyyy-MM-dd string, never a serialized DateTime.
+        private readonly IClock _clock;
+
         // CodexService's OWN lock — NOT the Economy SaveMutationLock (see class doc). A bare
         // SemaphoreSlim(1,1); the Economy lock is itself only such a wrapper.
         private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
@@ -57,10 +63,11 @@ namespace Veilwalkers.Monsters
         /// completion. Fired after <see cref="OnMonsterDiscovered"/>.</summary>
         public event Action OnCodexCompleted;
 
-        public CodexService(SaveService saveService, MonsterDatabase database)
+        public CodexService(SaveService saveService, MonsterDatabase database, IClock clock)
         {
             _saveService = saveService ?? throw new ArgumentNullException(nameof(saveService));
             _database = database ?? throw new ArgumentNullException(nameof(database));
+            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         }
 
         /// <summary>The number of discovered Monsters — the "X" in "X / 67". A key's
@@ -170,6 +177,21 @@ namespace Veilwalkers.Monsters
             _database.TryGet(id, out MonsterDefinition def) && def != null ? def.Rarity : (Rarity?)null;
 
         /// <summary>
+        /// The authored <see cref="MonsterDefinition"/> for <paramref name="id"/>, or
+        /// <c>null</c> for a reserved-but-unauthored universe id (mirrors
+        /// <see cref="MonsterDatabase.TryGet"/>'s safe-null). Routes the catalog read for the
+        /// Codex detail view (Story 2.5) through this service so the catalog has ONE home — the
+        /// detail presenter never touches <see cref="MonsterDatabase"/> directly, exactly as
+        /// <see cref="GetTier"/> keeps the tier rule here. The returned definition is static
+        /// design data exposed only through read-only accessors (no public setter), so handing
+        /// it out cannot corrupt state; a <c>null</c> name/lore/art on an authored asset is the
+        /// detail presenter's to render null-safely (the 2.1 deferral, settled at the render
+        /// layer in 2.5). Pure read — no lock.
+        /// </summary>
+        public MonsterDefinition GetDefinition(string id) =>
+            _database.TryGet(id, out MonsterDefinition def) ? def : null;
+
+        /// <summary>
         /// Record that <paramref name="id"/> was discovered <paramref name="via"/> Capture or
         /// Slay. The single Codex write seam (Epic 4's Capture &amp; Slay both funnel through
         /// here). Sets ONLY the flag matching <paramref name="via"/>; never implies the other
@@ -237,6 +259,14 @@ namespace Veilwalkers.Monsters
                 {
                     // First discovery (key absent) OR a null-valued key being repaired in place.
                     entry = new CodexEntryData(); // VariantFlags defaults to empty
+                    // Stamp the first-discovered date HERE — on the create path only, so a later
+                    // flag flip on an already-discovered Monster never rewrites it (it is the
+                    // FIRST-discovered date; AR-18 ISO yyyy-MM-dd via IClock, the DailyClaim shape).
+                    // A null-value-repair re-creates the entry and so gets a fresh stamp: the prior
+                    // date was already lost with the null value, so a current stamp is the honest
+                    // best-effort (documented edge). Set BEFORE SaveAsync so it persists atomically;
+                    // the existing key-absent RollBack removes the whole entry, reverting it on fault.
+                    entry.Discovered = _clock.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     model.Codex[id] = entry;
                 }
 

@@ -119,6 +119,9 @@ namespace Veilwalkers.Monsters.Tests
                         Scanned = src?.Scanned ?? false,
                         Captured = src?.Captured ?? false,
                         Slain = src?.Slain ?? false,
+                        // The first-discovered date (Story 2.5) — a scalar string; copy it so the
+                        // reload round-trip test honestly proves the date persists, not aliases.
+                        Discovered = src?.Discovered,
                         VariantFlags = src?.VariantFlags == null
                             ? new List<string>()
                             : new List<string>(src.VariantFlags),

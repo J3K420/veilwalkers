@@ -44,7 +44,8 @@ namespace Veilwalkers.UI.Tests
             var store = new FakeUiCodexProgressStore { Stored = new SaveModel() };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
-            var codex = new CodexService(save, db);
+            var codex = new CodexService(save, db, new FakeClock(
+                new System.DateTime(2026, 6, 14, 0, 0, 0, System.DateTimeKind.Utc)));
             return (codex, new CodexGridPresenter(codex));
         }
 

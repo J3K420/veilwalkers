@@ -61,7 +61,7 @@ development_status:
   2-2-register-the-67-monster-database-with-mvp-content: done
   2-3-read-and-persist-codex-collection-state: done
   2-4-browse-the-67-grid-with-hybrid-gradual-reveal: done
-  2-5-view-a-monsters-detail-entry: backlog
+  2-5-view-a-monsters-detail-entry: done
   epic-2-retrospective: optional
 
   # Epic 3: AR Mode — Safety, Camera & World Anchoring

@@ -21,14 +21,25 @@ namespace Veilwalkers.Monsters.Tests
     /// </summary>
     public sealed class CodexServiceTests
     {
+        // A fixed UTC instant for the first-discovered date stamp (Story 2.5). The date tests
+        // assert the exact ISO yyyy-MM-dd this produces ("2026-06-14"), mutation-testable.
+        private static readonly System.DateTime FixedNow =
+            new System.DateTime(2026, 6, 14, 9, 30, 0, System.DateTimeKind.Utc);
+
         private static (FakeCodexProgressStore store, SaveService save, CodexService codex)
             CreateInitialized(SaveModel seed = null)
+        {
+            return CreateInitialized(new FakeClock(FixedNow), seed);
+        }
+
+        private static (FakeCodexProgressStore store, SaveService save, CodexService codex)
+            CreateInitialized(FakeClock clock, SaveModel seed = null)
         {
             var store = new FakeCodexProgressStore { Stored = seed };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
             var db = ScriptableObject.CreateInstance<MonsterDatabase>();
-            var codex = new CodexService(save, db);
+            var codex = new CodexService(save, db, clock);
             return (store, save, codex);
         }
 
@@ -39,8 +50,10 @@ namespace Veilwalkers.Monsters.Tests
         {
             var db = ScriptableObject.CreateInstance<MonsterDatabase>();
             var save = new SaveService(new FakeCodexProgressStore { Stored = new SaveModel() });
-            Assert.Throws<System.ArgumentNullException>(() => new CodexService(null, db));
-            Assert.Throws<System.ArgumentNullException>(() => new CodexService(save, null));
+            var clock = new FakeClock(FixedNow);
+            Assert.Throws<System.ArgumentNullException>(() => new CodexService(null, db, clock));
+            Assert.Throws<System.ArgumentNullException>(() => new CodexService(save, null, clock));
+            Assert.Throws<System.ArgumentNullException>(() => new CodexService(save, db, null));
         }
 
         // ---- anti-tautology: prove the fake's clone is a real deep copy ----
@@ -203,7 +216,7 @@ namespace Veilwalkers.Monsters.Tests
             var reloadedSave = new SaveService(store);
             reloadedSave.InitializeAsync().GetAwaiter().GetResult();
             var reloadedDb = ScriptableObject.CreateInstance<MonsterDatabase>();
-            var reloaded = new CodexService(reloadedSave, reloadedDb);
+            var reloaded = new CodexService(reloadedSave, reloadedDb, new FakeClock(FixedNow));
 
             Assert.AreEqual(3, reloaded.DiscoveredCount);
             Assert.IsTrue(reloaded.IsDiscovered("mon01"));

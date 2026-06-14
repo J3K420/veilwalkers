@@ -89,6 +89,8 @@ namespace Veilwalkers.UI.Tests
                         Scanned = src?.Scanned ?? false,
                         Captured = src?.Captured ?? false,
                         Slain = src?.Slain ?? false,
+                        // The first-discovered date (Story 2.5) — copy the scalar so a reload is honest.
+                        Discovered = src?.Discovered,
                         VariantFlags = src?.VariantFlags == null
                             ? new List<string>()
                             : new List<string>(src.VariantFlags),
