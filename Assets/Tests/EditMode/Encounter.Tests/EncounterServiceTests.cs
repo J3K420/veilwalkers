@@ -42,7 +42,34 @@ namespace Veilwalkers.Encounter.Tests
             public FakeCameraPermission Permission;
             public CameraPermissionFlow PermissionFlow;
             public ArSessionService ArSessionService;
+            public MonsterDatabase Db;
+            public EconomyConfig Config;
+            public FakeRandom Random;
+            public LureSystem LureSystem;
+            public PlaneAnchorService PlaneAnchor;
+            public FakeSpawnSink SpawnSink;
+            public MonsterSpawner Spawner;
             public EncounterService Encounter;
+        }
+
+        // A roster spanning the rare floor for the LureSystem rarity roll: mon01 Common, mon02 Rare, mon03 Epic.
+        private static MonsterDatabase SeededDb()
+        {
+            var db = ScriptableObject.CreateInstance<MonsterDatabase>();
+            db.SetForTests(new[]
+            {
+                MakeDef("mon01", Rarity.Common),
+                MakeDef("mon02", Rarity.Rare),
+                MakeDef("mon03", Rarity.Epic),
+            });
+            return db;
+        }
+
+        private static MonsterDefinition MakeDef(string id, Rarity rarity)
+        {
+            var def = ScriptableObject.CreateInstance<MonsterDefinition>();
+            def.SetForTests(id, id, rarity, 0, 0, "lore", null);
+            return def;
         }
 
         private static Harness CreateHarness(SaveModel seed)
@@ -53,11 +80,11 @@ namespace Veilwalkers.Encounter.Tests
 
             var mutationLock = new SaveMutationLock();
             var credit = new CreditService(save, mutationLock);
-            // A minimal progression rules: thresholds don't matter for 4.1's composed-write tests.
+            // A minimal progression rules: thresholds don't matter for the composed-write tests.
             var rules = new ProgressionRules(new[] { 100, 200, 300 }, 1, 1, 1);
             var progression = new ProgressionService(save, rules, mutationLock);
 
-            var db = ScriptableObject.CreateInstance<MonsterDatabase>();
+            var db = SeededDb();
             var codex = new CodexService(save, db, new FakeClock(FixedNow));
 
             var anchorProvider = new FakeArAnchorProvider();
@@ -68,8 +95,19 @@ namespace Veilwalkers.Encounter.Tests
             var permissionFlow = new CameraPermissionFlow(permission);
             var arSessionService = new ArSessionService(arSession, permissionFlow);
 
+            // Story 4.2 Lure collaborators. The SAME anchorProvider backs BOTH AnchorRestore (recovery) and
+            // PlaneAnchorService (forward placement) — set AnchorProvider.AvailablePlacements in a test to
+            // grant placements. A fresh FakeRandom (script per test). The spawner over a counting sink.
+            var config = ScriptableObject.CreateInstance<EconomyConfig>(); // default canon costs 1/4/5
+            var random = new FakeRandom();
+            var lureSystem = new LureSystem(config, db, random);
+            var planeAnchor = new PlaneAnchorService(anchorProvider);
+            var spawnSink = new FakeSpawnSink();
+            var spawner = new MonsterSpawner(spawnSink);
+
             var encounter = new EncounterService(
-                save, credit, progression, codex, mutationLock, anchorRestore, arSessionService);
+                save, credit, progression, codex, mutationLock, anchorRestore, arSessionService,
+                lureSystem, planeAnchor, spawner);
 
             return new Harness
             {
@@ -85,6 +123,13 @@ namespace Veilwalkers.Encounter.Tests
                 Permission = permission,
                 PermissionFlow = permissionFlow,
                 ArSessionService = arSessionService,
+                Db = db,
+                Config = config,
+                Random = random,
+                LureSystem = lureSystem,
+                PlaneAnchor = planeAnchor,
+                SpawnSink = spawnSink,
+                Spawner = spawner,
                 Encounter = encounter,
             };
         }
@@ -108,13 +153,16 @@ namespace Veilwalkers.Encounter.Tests
         public void Ctor_null_args_throw()
         {
             var h = CreateHarness(new SaveModel());
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null, h.LureSystem, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, null, h.PlaneAnchor, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, null, h.Spawner));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, null));
         }
 
         // ---- AC-2: atomic multi-delta commit ----
@@ -350,6 +398,191 @@ namespace Veilwalkers.Encounter.Tests
             Assert.AreEqual(EncounterState.Suspended, h.Encounter.State, "It stays Suspended (no auto-resume).");
             Assert.AreEqual(0, h.AnchorProvider.ReacquireCalls, "No TryRestore/reacquire was attempted (nothing to restore).");
             Assert.AreEqual(0, h.AnchorProvider.GetRelocationCandidatesCalls, "No relocation query either.");
+        }
+
+        // ---- AC-1 (Story 4.2): Lure deducts only on a successful spawn, in ONE persist ----
+
+        [Test]
+        public void Basic_lure_deducts_once_spawns_and_enters_Lured()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 1; // one plane → one placement
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0); // common roll → mon01
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "A Basic Lure with credits + a plane succeeds.");
+            Assert.AreEqual(9, result.Spend.NewBalance, "Deducted exactly the Basic cost (1).");
+            Assert.AreEqual(9, h.Store.Stored.Credits, "...and persisted the deduction.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AC-1/AR-8: exactly ONE SaveAsync for the Lure.");
+            Assert.AreEqual(1, h.SpawnSink.LiveCount, "One monster spawned.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "Idle → Lured.");
+            CollectionAssert.AreEqual(new[] { "mon01" }, (System.Collections.Generic.List<string>)result.SpawnedMonsterIds);
+        }
+
+        [Test]
+        public void Lure_with_no_plane_deducts_nothing_and_stays_Idle()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 0; // NO plane
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0);
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(LureFailureReason.NoPlacement, result.FailureReason);
+            Assert.AreEqual(10, h.Store.Stored.Credits, "Nothing deducted on a no-placement block (AC-1).");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist at all (save-count unchanged).");
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "No monster spawned.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "The world does not lock — stays Idle.");
+        }
+
+        [Test]
+        public void Exact_balance_lure_succeeds_to_zero()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 1 }); // balance == Basic cost
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0);
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "Exact-balance spend succeeds (balance >= cost).");
+            Assert.AreEqual(0, result.Spend.NewBalance);
+            Assert.AreEqual(0, h.Store.Stored.Credits);
+        }
+
+        [Test]
+        public void Spawn_refused_after_deduction_refunds_and_aborts()
+        {
+            // AC-1 / Decision E NFR-3 path: a spawn refused AFTER the persisted deduction rolls the deduction
+            // back (refund) so the player is never charged without a spawn. Force the refusal by filling the
+            // spawner to its cap before the Lure (so the Lure's TrySpawn is refused post-deduction).
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 1; // a plane IS available — placement pre-check passes
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0);
+
+            // Saturate the pool to MaxConcurrent so the Lure's spawn activation is refused.
+            var fillPose = new Pose(Vector3.zero, Quaternion.identity);
+            for (int i = 0; i < h.Spawner.MaxConcurrent; i++)
+            {
+                Assert.IsTrue(h.Spawner.TrySpawn(in fillPose, out _), "Precondition: fill the pool to its cap.");
+            }
+            int liveBefore = h.SpawnSink.LiveCount;
+
+            LogAssert.ignoreFailingMessages = true; // the refund path warns
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "A post-deduction spawn refusal aborts the Lure.");
+            Assert.AreEqual(LureFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(10, h.Store.Stored.Credits, "The deduction was refunded — player not charged without a spawn (AC-1).");
+            Assert.AreEqual(liveBefore, h.SpawnSink.LiveCount, "No extra monster leaked from the refused Lure.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "Stays Idle (the Lure aborted).");
+        }
+
+        [Test]
+        public void EndEncounter_releases_the_lured_spawns_back_to_the_pool()
+        {
+            // Patch: spawn handles must be released on EndEncounter so a Lured encounter's spawns do not leak.
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 2;
+            h.Random.EnqueueDouble(0.99, 0.99).EnqueueNext(0, 0);
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Multi).GetAwaiter().GetResult();
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(2, h.SpawnSink.LiveCount, "Two monsters live during the encounter.");
+
+            h.Encounter.EndEncounter();
+
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "EndEncounter released both spawns back to the pool (no leak).");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State);
+        }
+
+        // ---- AC-4: insufficient credits → blocked + OnInsufficientCredits, nothing persisted ----
+
+        [Test]
+        public void Insufficient_credits_blocks_raises_event_and_persists_nothing()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 0 });
+            h.AnchorProvider.AvailablePlacements = 1; // a plane IS available — the block is purely economic
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0);
+
+            int eventCount = 0;
+            InsufficientCreditsEvent captured = default;
+            h.Encounter.OnInsufficientCredits += e => { eventCount++; captured = e; };
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(LureFailureReason.InsufficientCredits, result.FailureReason);
+            Assert.AreEqual(1, eventCount, "OnInsufficientCredits raised exactly once (AC-4).");
+            Assert.AreEqual(1, captured.Cost, "Event carries the Basic cost.");
+            Assert.AreEqual(0, captured.Balance, "Event carries the unchanged balance.");
+            Assert.AreEqual(0, h.Store.Stored.Credits, "Balance unchanged.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist on the rejected spend.");
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "No spawn.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "World does not lock — stays Idle.");
+        }
+
+        // ---- AC-3: Multi-Lure spawns two; blocks (and deducts nothing) if fewer than two placements ----
+
+        [Test]
+        public void Multi_lure_with_two_planes_deducts_five_once_and_spawns_two()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 2; // two planes
+            h.Random.EnqueueDouble(0.99, 0.99).EnqueueNext(0, 0); // two common rolls → mon01, mon01
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Multi).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "Multi-Lure with two planes succeeds.");
+            Assert.AreEqual(5, h.Store.Stored.Credits, "Deducted exactly the Multi cost (5).");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "ONE SaveAsync for the whole Multi-Lure (AR-8).");
+            Assert.AreEqual(2, h.SpawnSink.LiveCount, "TWO monsters spawned.");
+            Assert.AreEqual(2, result.SpawnedMonsterIds.Count, "Two monster ids reported.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State);
+        }
+
+        [Test]
+        public void Multi_lure_with_one_plane_blocks_deducts_nothing_and_leaks_no_spawn()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 1; // only ONE plane — cannot place both
+            h.Random.EnqueueDouble(0.99, 0.99).EnqueueNext(0, 0);
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.Multi).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "Require-two-or-block: one plane is not enough (AC-3).");
+            Assert.AreEqual(LureFailureReason.NoPlacement, result.FailureReason);
+            Assert.AreEqual(10, h.Store.Stored.Credits, "Nothing deducted — no double-charge, no partial-charge.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist at all.");
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "No partial spawn — the first placement was abandoned, none activated.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State);
+        }
+
+        // ---- a Lure cannot start mid-encounter ----
+
+        [Test]
+        public void Lure_is_refused_when_an_encounter_is_already_active()
+        {
+            var h = CreateHarness(new SaveModel { Credits = 10 });
+            h.AnchorProvider.AvailablePlacements = 3; // enough for the first Lure + an attempt
+            h.Random.EnqueueDouble(0.99, 0.99, 0.99).EnqueueNext(0, 0, 0);
+
+            LureResult first = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+            Assert.IsTrue(first.Success);
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State);
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("already active"));
+            LureResult second = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+
+            Assert.IsFalse(second.Success, "A second Lure mid-encounter is refused.");
+            Assert.AreEqual(9, h.Store.Stored.Credits, "The refused second Lure deducted nothing extra.");
         }
     }
 }

@@ -77,7 +77,7 @@ development_status:
   # Epic 4: The Encounter Loop — Lure, Scan, Capture, Slay
   epic-4: in-progress
   4-1-drive-the-encounter-with-an-explicit-state-machine: done
-  4-2-lure-a-monster-basic-premium-multi: backlog
+  4-2-lure-a-monster-basic-premium-multi: done
   4-3-scan-a-monster-for-free: backlog
   4-4-capture-a-monster-free-base-strong-capture: backlog
   4-5-slay-a-monster-for-superior-loot: backlog

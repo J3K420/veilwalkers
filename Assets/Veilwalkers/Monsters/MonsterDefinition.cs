@@ -8,6 +8,9 @@ using UnityEngine;
 // build the Codex grid presenter's test DB, so it is granted the same internals access.
 [assembly: InternalsVisibleTo("Veilwalkers.Monsters.Tests")]
 [assembly: InternalsVisibleTo("Veilwalkers.UI.Tests")]
+// Veilwalkers.Encounter.Tests (Story 4.2) authors in-memory definitions via SetForTests to seed the
+// LureSystem rarity-roll roster (a known mix of below-Rare and Rare+ monsters).
+[assembly: InternalsVisibleTo("Veilwalkers.Encounter.Tests")]
 
 namespace Veilwalkers.Monsters
 {

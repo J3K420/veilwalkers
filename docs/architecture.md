@@ -662,9 +662,11 @@ each (decided via Second-Order Thinking elicitation) so they no longer threaten 
   only first discovery counts. Reaching **67/67** raises a `OnCodexCompleted` acknowledgment hook.
 - **Mid-encounter level-up:** a charge granted by a level-up **mid-encounter** becomes usable
   immediately in that same encounter (confirm against pacing intent).
-- **Multi-Lure partial fit:** if two Monsters can't both be placed on available planes, define
-  behavior explicitly (spawn what fits + queue/relocate the second; do not silently drop or
-  double-charge). `[FLAG: confirm desired behavior.]`
+- **Multi-Lure partial fit:** require TWO valid placements; if fewer than two are available, block
+  the Multi-Lure with plane coaching and deduct NOTHING (the deduct-only-on-successful-spawn rule
+  applied to the whole Multi-Lure) — never silently drop a Monster and never double-charge.
+  `[FLAG RESOLVED — PM, 2026-06-14: require-two-placements-or-block. Supersedes the earlier
+  "spawn what fits + queue/relocate" option; no pending-spawn queue is built. Implemented in Story 4.2.]`
 - **Corrupt/tampered save on load:** throw (never silently wipe), then present a player-facing
   recovery choice (retry / start fresh) — recovery path is explicit, not a dead end.
 

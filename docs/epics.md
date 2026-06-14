@@ -633,7 +633,7 @@ So that I have something to hunt.
 
 **Given** Multi-Lure
 **When** it resolves
-**Then** two Monsters spawn in one encounter; if both cannot be placed on available planes, spawn what fits and queue/relocate the second — never silently drop or double-charge. [FLAG: confirm desired behavior with PM.]
+**Then** two Monsters spawn in one encounter; if two valid placements are not available, the Multi-Lure is blocked with plane coaching and NOTHING is deducted — never silently drop a Monster and never double-charge. [FLAG RESOLVED (PM, 2026-06-14): require-two-placements-or-block — pre-check that two valid placements exist before the spend; fewer than two → refuse + coach + deduct nothing (the cleanest deduct-only-on-successful-spawn parity; no pending-spawn queue). Supersedes the original "spawn what fits + queue/relocate the second" wording.]
 
 **Given** insufficient Credits
 **When** the player attempts a Lure

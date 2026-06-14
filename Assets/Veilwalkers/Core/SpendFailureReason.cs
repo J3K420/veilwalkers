@@ -27,6 +27,17 @@ namespace Veilwalkers.Core
         /// indicating earn-via-XP" (services produce no player-facing copy — AR-11).
         /// Appended (never reordered) to keep persisted/telemetry values stable.
         /// </summary>
-        InsufficientCharges = 3
+        InsufficientCharges = 3,
+
+        /// <summary>
+        /// No spend was attempted — a composed action was blocked BEFORE the credit
+        /// check ever ran (e.g. a Lure with no available plane, or refused because an
+        /// encounter is already active — Story 4.2). The balance is unchanged and was
+        /// never debited; this is distinct from <see cref="InsufficientCredits"/> (the
+        /// player COULD not afford it) and <see cref="PersistenceFailed"/> (an I/O
+        /// fault DID occur). A consumer reads this as "the spend never ran," never as a
+        /// balance shortfall or a save error. Appended (never reordered).
+        /// </summary>
+        NotAttempted = 4
     }
 }

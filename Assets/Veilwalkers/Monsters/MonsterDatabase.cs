@@ -9,6 +9,9 @@ using UnityEngine;
 // drive the Codex grid presenter, so it is granted the same internals access.
 [assembly: InternalsVisibleTo("Veilwalkers.Monsters.Tests")]
 [assembly: InternalsVisibleTo("Veilwalkers.UI.Tests")]
+// Veilwalkers.Encounter.Tests (Story 4.2) seeds an in-memory roster via SetForTests to drive the LureSystem
+// rarity roll (the .asset is unauthored — Story 2.2 — so PopulatedCount is 0 without seeding).
+[assembly: InternalsVisibleTo("Veilwalkers.Encounter.Tests")]
 
 namespace Veilwalkers.Monsters
 {

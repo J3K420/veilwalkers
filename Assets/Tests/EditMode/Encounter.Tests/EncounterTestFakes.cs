@@ -152,11 +152,22 @@ namespace Veilwalkers.Encounter.Tests
     }
 
     /// <summary>
-    /// A minimal <see cref="IArAnchorProvider"/> fake for the recovery (<see cref="EncounterService.Recover"/>)
-    /// path. Drives the <see cref="AnchorRestoreService"/> decision: set <see cref="ReacquireSucceeds"/> for
-    /// the <c>Restored</c> case, supply <see cref="Candidates"/> for <c>RelocatedToPlane</c>, or neither for
-    /// <c>Failed</c>. Exposes call counts so the AC-3 "TryRestore was called" seam pin is real. The forward
-    /// (placement) members are unused here and return safe defaults.
+    /// A configurable <see cref="IArAnchorProvider"/> fake driving BOTH the recovery
+    /// (<see cref="EncounterService.Recover"/>) path AND the Story 4.2 forward placement path.
+    /// <para>
+    /// <b>Recovery:</b> set <see cref="ReacquireSucceeds"/> for the <c>Restored</c> case, supply
+    /// <see cref="Candidates"/> for <c>RelocatedToPlane</c>, or neither for <c>Failed</c>;
+    /// <see cref="ReacquireCalls"/>/<see cref="GetRelocationCandidatesCalls"/> pin the AC-3 "TryRestore was
+    /// called" seam.
+    /// </para>
+    /// <para>
+    /// <b>Forward placement (4.2):</b> set <see cref="AvailablePlacements"/> to the number of successful
+    /// placements this provider will grant — each <c>TryPlace()</c> consumes one. With a placement available,
+    /// <see cref="HasTrackablePlane"/> is true, <see cref="TryGetPlacementPose"/> yields a unique pose, and
+    /// <see cref="TryCreateAnchor"/> returns a real <see cref="AnchorToken"/>; once exhausted it reports no
+    /// plane (the coaching path). This lets a Multi-Lure test grant exactly one placement (→ block) or two
+    /// (→ spawn both).
+    /// </para>
     /// </summary>
     internal sealed class FakeArAnchorProvider : IArAnchorProvider
     {
@@ -167,19 +178,46 @@ namespace Veilwalkers.Encounter.Tests
         public int ReacquireCalls { get; private set; }
         public int GetRelocationCandidatesCalls { get; private set; }
 
-        public bool HasTrackablePlane => false;
+        /// <summary>How many successful forward placements remain (each <c>TryPlace()</c> consumes one).
+        /// 0 (default) = the recovery-only behaviour (no plane), preserving the 4.1 tests' expectations.</summary>
+        public int AvailablePlacements;
+
+        /// <summary>How many anchors this provider has created (the placement seam-call pin).</summary>
+        public int CreateAnchorCalls { get; private set; }
+
+        private int _anchorSeq;
+
+        public bool HasTrackablePlane => AvailablePlacements > 0;
 
         public bool TryGetPlacementPose(out Pose pose, out string planeId)
         {
-            pose = default;
-            planeId = null;
-            return false;
+            if (AvailablePlacements <= 0)
+            {
+                pose = default;
+                planeId = null;
+                return false;
+            }
+
+            // A unique-per-call pose/plane so two Multi placements are distinguishable.
+            int n = _anchorSeq + 1;
+            pose = new Pose(new Vector3(n, 0f, 0f), Quaternion.identity);
+            planeId = $"plane-{n}";
+            return true;
         }
 
         public bool TryCreateAnchor(in Pose pose, string planeId, out AnchorToken token)
         {
-            token = default;
-            return false;
+            if (AvailablePlacements <= 0)
+            {
+                token = default;
+                return false;
+            }
+
+            AvailablePlacements--;
+            _anchorSeq++;
+            CreateAnchorCalls++;
+            token = new AnchorToken($"anchor-{_anchorSeq}", pose.position, pose.rotation);
+            return true;
         }
 
         public bool TryReacquireAnchor(in AnchorToken token, out Pose pose)
@@ -195,5 +233,74 @@ namespace Veilwalkers.Encounter.Tests
             candidates = Candidates ?? Array.Empty<PlaneCandidate>();
             return candidates.Length > 0;
         }
+    }
+
+    /// <summary>
+    /// A scripted <see cref="IRandom"/> for the deterministic Lure rarity roll (Story 4.2, AC-2). Queue the
+    /// exact <see cref="NextDouble"/> values (the rare-gate draws) and <see cref="Next"/> values (the uniform
+    /// index picks) the test needs; draws past the end of a queue return a safe default (0). This lets a test
+    /// force "the roll lands above Basic's rare chance but below Premium's" to pin the strict inequality.
+    /// </summary>
+    internal sealed class FakeRandom : IRandom
+    {
+        private readonly Queue<double> _doubles = new Queue<double>();
+        private readonly Queue<int> _ints = new Queue<int>();
+
+        public FakeRandom EnqueueDouble(params double[] values)
+        {
+            foreach (double v in values)
+            {
+                _doubles.Enqueue(v);
+            }
+
+            return this;
+        }
+
+        public FakeRandom EnqueueNext(params int[] values)
+        {
+            foreach (int v in values)
+            {
+                _ints.Enqueue(v);
+            }
+
+            return this;
+        }
+
+        public int Next(int maxExclusive)
+        {
+            if (maxExclusive <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxExclusive));
+            }
+
+            int v = _ints.Count > 0 ? _ints.Dequeue() : 0;
+            // Clamp into range so an over-long script (or a fallback pool of a different size) is still safe.
+            return ((v % maxExclusive) + maxExclusive) % maxExclusive;
+        }
+
+        public double NextDouble() => _doubles.Count > 0 ? _doubles.Dequeue() : 0.0;
+    }
+
+    /// <summary>
+    /// A counting <see cref="ISpawnSink"/> for the Story 4.2 spawn pins — tracks how many instances are live
+    /// so a test can assert "two monsters spawned" (Multi) or "none leaked" (a blocked Lure). Mirrors the
+    /// AR.Tests fake's shape; authored here so Encounter.Tests is self-contained.
+    /// </summary>
+    internal sealed class FakeSpawnSink : ISpawnSink
+    {
+        public int LiveCount { get; private set; }
+        public int InstantiateCalls { get; private set; }
+        private int _seq;
+
+        public int Instantiate(in Pose pose)
+        {
+            InstantiateCalls++;
+            LiveCount++;
+            return _seq++;
+        }
+
+        public void Activate(int id, in Pose pose) => LiveCount++;
+
+        public void Deactivate(int id) => LiveCount--;
     }
 }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using UnityEngine;
 using Veilwalkers.AR;
 using Veilwalkers.Core;
 using Veilwalkers.Core.Contracts;
@@ -56,11 +58,23 @@ namespace Veilwalkers.Encounter
         private readonly AnchorRestoreService _anchorRestoreService;
         private readonly ArSessionService _arSessionService;
 
+        // Story 4.2 — the Lure collaborators: the decision logic (cost + rarity roll), the placement
+        // decision (AC-1 "deduct only on successful spawn" — placement is secured BEFORE the spend), and the
+        // pooled spawner (NFR-1). All ctor-injected (AR-4).
+        private readonly LureSystem _lureSystem;
+        private readonly PlaneAnchorService _planeAnchorService;
+        private readonly MonsterSpawner _monsterSpawner;
+
         private readonly EncounterStateMachine _stateMachine = new EncounterStateMachine();
 
         // The active encounter's anchors (in-memory only this story — the persisted Shop round-trip snapshot
         // is Story 5.4). Set when a Lure spawns (4.2); read on recovery to re-anchor. Minimal for 4.1.
         private AnchorToken[] _activeAnchors = Array.Empty<AnchorToken>();
+
+        // The active encounter's pooled-spawn handles (Story 4.2). Held so EndEncounter can Release them back
+        // to the MonsterSpawner pool — otherwise a Lured encounter's spawns would stay active forever (a pool
+        // leak). Set on a successful Lure; cleared + released on EndEncounter.
+        private int[] _activeSpawnHandles = Array.Empty<int>();
 
         /// <summary>
         /// Raised when a composed action cannot afford its credit spend (AR-11): the service NEVER opens the
@@ -83,7 +97,10 @@ namespace Veilwalkers.Encounter
             CodexService codexService,
             SaveMutationLock mutationLock,
             AnchorRestoreService anchorRestoreService,
-            ArSessionService arSessionService)
+            ArSessionService arSessionService,
+            LureSystem lureSystem,
+            PlaneAnchorService planeAnchorService,
+            MonsterSpawner monsterSpawner)
         {
             _saveService = saveService ?? throw new ArgumentNullException(nameof(saveService));
             _creditService = creditService ?? throw new ArgumentNullException(nameof(creditService));
@@ -92,6 +109,9 @@ namespace Veilwalkers.Encounter
             _mutationLock = mutationLock ?? throw new ArgumentNullException(nameof(mutationLock));
             _anchorRestoreService = anchorRestoreService ?? throw new ArgumentNullException(nameof(anchorRestoreService));
             _arSessionService = arSessionService ?? throw new ArgumentNullException(nameof(arSessionService));
+            _lureSystem = lureSystem ?? throw new ArgumentNullException(nameof(lureSystem));
+            _planeAnchorService = planeAnchorService ?? throw new ArgumentNullException(nameof(planeAnchorService));
+            _monsterSpawner = monsterSpawner ?? throw new ArgumentNullException(nameof(monsterSpawner));
 
             // AC-3: the encounter consumer of the AR-loss event 3.3 already raises. Subscribed for the
             // service's lifetime; symmetric unsubscribe lands with the Epic-6 disposal/teardown contract.
@@ -119,12 +139,317 @@ namespace Veilwalkers.Encounter
         /// <summary>Lured → Acting: the player began an action (the action logic is 4.3–4.6).</summary>
         public bool BeginAction() => _stateMachine.BeginAction();
 
-        /// <summary>Reset the encounter to Idle (ends/aborts it); clears the active anchors.</summary>
+        /// <summary>Reset the encounter to Idle (ends/aborts it); releases the active pooled spawns back to the
+        /// <see cref="MonsterSpawner"/> pool and clears the active anchors. (Without the release the Lured
+        /// encounter's spawns would stay active across encounters — a pool leak.)</summary>
         public bool EndEncounter()
         {
+            foreach (int handle in _activeSpawnHandles)
+            {
+                _monsterSpawner.Release(handle);
+            }
+
+            _activeSpawnHandles = Array.Empty<int>();
             _activeAnchors = Array.Empty<AnchorToken>();
             return _stateMachine.Reset();
         }
+
+        // ---- AC-1/3/4 (Story 4.2): the Lure action — cost + rarity + placement + atomic credit-spend ----
+
+        /// <summary>
+        /// Lure a Monster (Story 4.2, FR-6): Basic (1) / Premium (4) / Multi-Lure (5). Composes the
+        /// <see cref="LureSystem"/> decision (cost + rarity roll) with the Epic-3 placement
+        /// (<see cref="PlaneAnchorService"/>) and pooled spawn (<see cref="MonsterSpawner"/>), committing the
+        /// Credit deduction in ONE atomic save write (AR-8). Returns a typed <see cref="LureResult"/> — never
+        /// throws for an expected failure (AR-7).
+        /// <para>
+        /// <b>The ordering (Decision E — "deduct only on successful spawn", AC-1).</b> Placement is secured
+        /// FIRST (a placement that cannot be obtained costs nothing — <see cref="LureFailureReason.NoPlacement"/>);
+        /// THEN credits are checked + deducted in the single composed write (insufficient → nothing persisted,
+        /// <see cref="OnInsufficientCredits"/> raised, <see cref="LureFailureReason.InsufficientCredits"/>); THEN
+        /// the secured placements are activated as pooled spawns and the state machine moves Idle → Lured. So
+        /// there is never a charge without a spawn, nor a spawn without a charge.
+        /// </para>
+        /// <para>
+        /// <b>Multi-Lure (AC-3 — require two or block).</b> A Multi-Lure needs TWO valid placements. If the
+        /// second cannot be secured, the first is released and the whole Lure is blocked with coaching,
+        /// deducting nothing — never a partial spawn, never a double-charge. (The "spawn-what-fits + queue"
+        /// option was rejected by the PM; see the story's resolved FLAG.)
+        /// </para>
+        /// <para>
+        /// The tiered materialization VFX/entrance (T1 Pop-in … T5 Breach) is Story 4.7 — 4.2 performs the
+        /// LOGICAL spawn (pool activate + anchor) + the state transition; the <see cref="LureResult"/> is the
+        /// sub-second spend-ack contract (returned synchronously after the persist commits, NFR-2), and the
+        /// cinematic plays afterward against the returned ids.
+        /// </para>
+        /// </summary>
+        public async Task<LureResult> TryLureAsync(LureKind kind)
+        {
+            // Must start from Idle (one Lure per encounter; a re-Lure aborts the prior encounter first via
+            // EndEncounter). A non-Idle machine is a warned no-op — surface a typed failure, persist nothing.
+            if (_stateMachine.State != EncounterState.Idle)
+            {
+                GameLog.Warn(
+                    $"EncounterService.TryLureAsync ignored — an encounter is already active (state: {_stateMachine.State}).");
+                // Re-entrancy refusal — NOT a placement or affordability failure. No spend was attempted.
+                return LureResult.Failed(
+                    LureFailureReason.AlreadyActive, SpendResult.Failed(SpendFailureReason.NotAttempted, CurrentBalance()));
+            }
+
+            int cost = _lureSystem.CostOf(kind);
+            int wanted = _lureSystem.MonsterCountOf(kind);
+
+            // (1) Roll the monster id(s) — pure decision, no side effects (LureSystem). Multi rolls two
+            // INDEPENDENT monsters; Basic/Premium roll one.
+            var monsterIds = new List<string>(wanted);
+            if (kind == LureKind.Multi)
+            {
+                (string first, string second) = _lureSystem.RollMultiMonsters();
+                monsterIds.Add(first);
+                monsterIds.Add(second);
+            }
+            else
+            {
+                monsterIds.Add(_lureSystem.RollMonster(kind));
+            }
+
+            // (2) Secure the required placements BEFORE the spend (Decision E). For Multi this is two; if the
+            // second cannot be secured, release the first and block — deduct nothing (AC-3). No anchor here
+            // creates a persisted side effect, so abandoning a secured placement on a partial-fit block is
+            // free of economy consequences (the spawn is only ACTIVATED after the deduction commits).
+            var anchors = new List<AnchorToken>(wanted);
+            if (!TrySecurePlacements(wanted, anchors))
+            {
+                // Not enough planes — coaching is already surfaced by PlaneAnchorService. Nothing deducted,
+                // machine stays Idle (the world does not lock).
+                GameLog.Info(
+                    $"EncounterService.TryLureAsync ({kind}) blocked — only secured {anchors.Count} of {wanted} " +
+                    "placements. Nothing deducted (AC-1/AC-3); showing plane coaching.");
+                // Placement failed BEFORE any spend — the credits were never checked, so this is NotAttempted,
+                // NOT InsufficientCredits (a consumer must not read this as "can't afford").
+                return LureResult.Failed(
+                    LureFailureReason.NoPlacement, SpendResult.Failed(SpendFailureReason.NotAttempted, CurrentBalance()));
+            }
+
+            // (3) The atomic credit-spend write (AR-8): ONE persist, whole-mutation rollback. Insufficient
+            // credits is reported WITHOUT persisting; a persist fault rolls back.
+            SpendResult spend = await CommitLureSpendAsync(cost).ConfigureAwait(false);
+
+            if (!spend.Success)
+            {
+                if (spend.FailureReason == SpendFailureReason.InsufficientCredits)
+                {
+                    // AC-4: raise the rejected-spend event (AR-11 — never open the Shop). The world does not
+                    // lock; the secured placements are simply abandoned (no spawn activated, no anchor cost).
+                    RaiseInsufficientCredits(new InsufficientCreditsEvent(cost, spend.NewBalance));
+                    return LureResult.Failed(LureFailureReason.InsufficientCredits, spend);
+                }
+
+                // Persist fault: the deduction (if any) already rolled back inside the composed write.
+                return LureResult.Failed(LureFailureReason.PersistenceFailed, spend);
+            }
+
+            // (4) The spend committed — NOW activate the secured placements as pooled spawns and move
+            // Idle → Lured (recording the anchors for AC-3 recovery). The spawn is the "perform" step; given
+            // the pre-check it should not fail, but a cap refusal here is the NFR-3 path → refund + abort.
+            if (!ActivateSpawns(anchors, out List<int> handles))
+            {
+                SpendResult refund = await RefundLureSpendAsync(cost).ConfigureAwait(false);
+                GameLog.Warn(
+                    $"EncounterService.TryLureAsync ({kind}): a spawn was refused after the deduction — refunded " +
+                    "and aborted (NFR-3). No charge without a spawn.");
+                return LureResult.Failed(LureFailureReason.PersistenceFailed, refund);
+            }
+
+            // Idle → Lured. The Idle pre-check above + single-threaded gameplay guarantee this succeeds; if it
+            // somehow does not, reconcile (release the just-activated spawns + refund) rather than returning a
+            // false success with charged-but-not-Lured state (NFR-3 / failure-path-cleanup-parity).
+            if (!_stateMachine.BeginLure())
+            {
+                foreach (int handle in handles)
+                {
+                    _monsterSpawner.Release(handle);
+                }
+
+                SpendResult refund = await RefundLureSpendAsync(cost).ConfigureAwait(false);
+                GameLog.Error(
+                    $"EncounterService.TryLureAsync ({kind}): Idle → Lured transition was refused after a committed " +
+                    "spend — released the spawns + refunded (should be unreachable given the Idle pre-check).");
+                return LureResult.Failed(LureFailureReason.PersistenceFailed, refund);
+            }
+
+            _activeAnchors = anchors.ToArray();
+            _activeSpawnHandles = handles.ToArray();
+
+            return LureResult.Succeeded(spend, monsterIds);
+        }
+
+        /// <summary>
+        /// Secure <paramref name="count"/> placements via <see cref="PlaneAnchorService.TryPlace"/>,
+        /// appending each <c>Placed</c> token to <paramref name="anchors"/>. Returns true only if ALL
+        /// <paramref name="count"/> were secured; on a shortfall it returns false WITHOUT mutating
+        /// <paramref name="anchors"/> beyond what it secured (the caller treats a partial as a block). No
+        /// persisted side effect — a secured-but-unused anchor is abandoned for free (the spawn is activated
+        /// later, only after the deduction commits).
+        /// </summary>
+        private bool TrySecurePlacements(int count, List<AnchorToken> anchors)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                PlacementResult placement = _planeAnchorService.TryPlace();
+                if (placement.Outcome != PlacementOutcome.Placed)
+                {
+                    // A shortfall: AC-3 requires ALL-or-block. Stop; the caller blocks + deducts nothing.
+                    return false;
+                }
+
+                anchors.Add(placement.Token);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Activate one pooled spawn per secured anchor (<see cref="MonsterSpawner.TrySpawn"/>), deriving the
+        /// <see cref="Pose"/> from the token (<c>new Pose(token.position, token.rotation)</c> — the
+        /// <see cref="AnchorRestoreService"/> precedent). Returns true only if EVERY spawn activated; on a cap
+        /// refusal it releases any spawns it already activated (so a partial spawn never lingers) and returns
+        /// false. Never throws (NFR-3).
+        /// </summary>
+        private bool ActivateSpawns(List<AnchorToken> anchors, out List<int> handles)
+        {
+            handles = new List<int>(anchors.Count);
+            foreach (AnchorToken token in anchors)
+            {
+                var pose = new Pose(token.position, token.rotation);
+                if (!_monsterSpawner.TrySpawn(in pose, out int handle))
+                {
+                    // Reconcile: release the spawns already activated for this Lure so a refused Multi does
+                    // not leave one monster active (the [[failure-path-cleanup-parity]] discipline).
+                    foreach (int activated in handles)
+                    {
+                        _monsterSpawner.Release(activated);
+                    }
+
+                    handles.Clear();
+                    return false;
+                }
+
+                handles.Add(handle);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The atomic credit-spend composed write (AR-8) for a Lure — a SIBLING of
+        /// <see cref="CommitActionAsync"/>: it spends CREDITS (not a charge) and records NO codex discovery (a
+        /// Lure does not discover — that is Capture/Slay, Stories 4.4/4.5). Same pipeline shape as
+        /// <see cref="ProgressionService.AddXpAsync"/> / <see cref="CommitActionAsync"/>: acquire the SHARED
+        /// <see cref="SaveMutationLock"/> once → capture the model ref once → validate <c>Credits &gt;= cost</c>
+        /// (the exact-balance <c>&gt;=</c> rule) → deduct in memory → ONE <c>SaveAsync</c> → recovery-swap
+        /// guard → roll back on any fault → release → (events are the caller's: <see cref="OnInsufficientCredits"/>
+        /// on the insufficient path). Does NOT call <see cref="ICreditService"/> — that takes its OWN lock, so
+        /// calling it here would deadlock; the composed write mutates <c>model.Credits</c> directly under the
+        /// shared lock (the [[codex-service-lock-tier]] rule — exactly as <see cref="CommitActionAsync"/>
+        /// mutates charges directly).
+        /// </summary>
+        private async Task<SpendResult> CommitLureSpendAsync(int cost)
+        {
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                int priorCredits = model.Credits;
+
+                if (priorCredits < cost)
+                {
+                    // Expected "can't afford" failure — no mutation, no persist (AC-4). The unchanged balance
+                    // is reported so the OnInsufficientCredits payload is accurate.
+                    return SpendResult.Failed(SpendFailureReason.InsufficientCredits, priorCredits);
+                }
+
+                // Deduct in memory (exact-balance OK: priorCredits == cost → 0, the >= rule).
+                model.Credits = priorCredits - cost;
+
+                try
+                {
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+
+                    if (ReferenceEquals(_saveService.Current, model))
+                    {
+                        return SpendResult.Succeeded(model.Credits);
+                    }
+
+                    // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at, NOT this
+                    // deduction. Revert onto the captured ref (the swap-branch contract) + report failure.
+                    model.Credits = priorCredits;
+                    GameLog.Error(
+                        $"EncounterService: a Lure spend ({cost}) rolled back — the save model was swapped " +
+                        "mid-operation (recovery raced a mutation).");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, priorCredits);
+                }
+                catch (Exception ex)
+                {
+                    // Persist fault: revert the deduction onto the captured ref — never recompute.
+                    model.Credits = priorCredits;
+                    GameLog.Error(
+                        $"EncounterService: a Lure spend ({cost}) rolled back — persist failed. {ex.Message}");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, priorCredits);
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Refund a Lure's cost (the NFR-3 path when a spawn is refused AFTER the deduction committed):
+        /// re-credit <paramref name="cost"/> in one atomic write under the shared lock, so a refused spawn
+        /// never leaves the player charged. Mirrors the spend pipeline (add instead of subtract). A refund
+        /// persist fault is logged; the in-memory balance is restored regardless so gameplay is not charged.
+        /// </summary>
+        private async Task<SpendResult> RefundLureSpendAsync(int cost)
+        {
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                model.Credits += cost; // re-credit in memory so gameplay is never left charged
+
+                try
+                {
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+                    if (!ReferenceEquals(_saveService.Current, model))
+                    {
+                        // Swapped mid-persist: the durable save did NOT capture the refund. Report a failure
+                        // (the refund did not durably commit) — the caller already returns a failed LureResult;
+                        // do NOT claim Succeeded, or a consumer would believe the credit state is committed.
+                        GameLog.Error(
+                            "EncounterService: a Lure refund could not be persisted (model swapped mid-persist) — " +
+                            "the in-memory balance is restored, but the durable save may lag until the next write.");
+                        return SpendResult.Failed(SpendFailureReason.PersistenceFailed, model.Credits);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    GameLog.Error(
+                        $"EncounterService: a Lure refund persist failed — in-memory balance restored, durable save lags. {ex.Message}");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, model.Credits);
+                }
+
+                return SpendResult.Succeeded(model.Credits);
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>The current credit balance, or 0 if the model is not loaded (defensive — used only to
+        /// populate a typed failure's balance field on an early-out path).</summary>
+        private int CurrentBalance() => _saveService.Current?.Credits ?? 0;
 
         // ---- AC-2: the atomic multi-delta write primitive + a representative composed action ----
 
