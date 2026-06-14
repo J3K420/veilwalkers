@@ -68,7 +68,7 @@ development_status:
   epic-3: in-progress
   3-1-disclose-and-request-camera-permission-gracefully: done
   3-2-gate-ar-entry-behind-the-mandatory-safety-warning: done
-  3-3-own-the-ar-session-lifecycle-with-prewarm: backlog
+  3-3-own-the-ar-session-lifecycle-with-prewarm: done
   3-4-detect-planes-and-anchor-objects-with-occlusion-and-lighting: backlog
   3-5-save-and-restore-anchors-across-interruption: backlog
   epic-3-retrospective: optional

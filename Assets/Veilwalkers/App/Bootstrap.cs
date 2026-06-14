@@ -178,6 +178,31 @@ namespace Veilwalkers.App
                 // gate-to-flow dependency.
                 var arSafetyGate = new ArSafetyGate();
 
+                // AR session lifecycle owner (Story 3.3, Veilwalkers.AR) — the sole owner of the AR
+                // session (cold→prewarming→ready→running→paused), the ONLY place AR is started/torn
+                // down (AR-1, architecture.md:405,466-468,584). The pure-logic state machine
+                // (ArSessionService) is ctor-injected with the OS seam (IArSession → ArcoreSession,
+                // the AndroidCameraPermission-equivalent thin adapter) AND the SAME registered
+                // cameraPermissionFlow above — so the inherited Story 3.1 deferral (re-validate camera
+                // permission before session start / on backgrounded-resume; Android can revoke it while
+                // backgrounded) reads ONE permission-truth source, not a parallel one. Registered LIVE
+                // (like CameraPermissionFlow/ArSafetyGate): ArcoreSession's editor path is a no-op and
+                // its device subsystem glue is a TODO wired when the AR rig scene lands (Story 3.4/6.3,
+                // decision #5), so construction never throws at boot. Construction does NOT warm the
+                // session (no StartAsync) — AR warmup is on the async path, NOT awaited before Home
+                // (AC-CS-2 / LoadPhase.WarmupAsync). The PREWARM TRIGGER is NOT fired here: Onboarding/
+                // Home own it, gated to when the AR-entry affordance is visible/likely (architecture.md
+                // :583,588-589 — warming AR before the player is near it burns battery/GPU); Bootstrap
+                // owns the LoadPhase staging contract, NOT the trigger (architecture.md:423). The
+                // CONSUMER, ArSessionView (Veilwalkers.UI), resolves this via GameServices.Get, pumps
+                // OnApplicationPause, and exposes the prewarm/enter/back-out entry points; placing it +
+                // routing the triggers is Epic 6 (Story 6.3/6.4). The OnArSessionInterrupted event is
+                // raised here on lifecycle loss (permission-revoked-on-resume); its EncounterStateMachine
+                // Suspended consumer is Story 3.5/Epic 4. The lifecycle is fully proven headless by
+                // AR.Tests against FakeArSession. See LoadPhase.cs for the AC-2 staging contract.
+                var arcoreSession = new ArcoreSession();
+                var arSessionService = new ArSessionService(arcoreSession, cameraPermissionFlow);
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -213,6 +238,7 @@ namespace Veilwalkers.App
                 GameServices.Register<ITelemetrySink>(telemetrySink);
                 GameServices.Register<CameraPermissionFlow>(cameraPermissionFlow);
                 GameServices.Register<ArSafetyGate>(arSafetyGate);
+                GameServices.Register<ArSessionService>(arSessionService);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
