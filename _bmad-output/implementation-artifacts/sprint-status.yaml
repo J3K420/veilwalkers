@@ -36,7 +36,8 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-15
-# epic-4 complete — all 7 stories done + retrospective done (2026-06-15); next: epic-5 (Shop & Billing)
+# epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
+# epic-5 in-progress — 5.1 done (2026-06-15); next: 5.2 (reconcile exactly-once)
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -86,8 +87,8 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Shop & Monetization (Google Play Billing)
-  epic-5: backlog
-  5-1-browse-and-purchase-credit-packs-via-google-play-billing: backlog
+  epic-5: in-progress
+  5-1-browse-and-purchase-credit-packs-via-google-play-billing: done
   5-2-reconcile-purchases-exactly-once: backlog
   5-3-grant-and-consume-the-guaranteed-rare-lure: backlog
   5-4-top-up-mid-encounter-without-losing-the-encounter: backlog

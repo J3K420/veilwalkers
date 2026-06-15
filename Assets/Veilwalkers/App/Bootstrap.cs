@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using UnityEngine;
 using Veilwalkers.AR;
+using Veilwalkers.Billing;
 using Veilwalkers.Core;
 using Veilwalkers.Economy;
 using Veilwalkers.Persistence;
@@ -233,6 +234,33 @@ namespace Veilwalkers.App
                 var spawnSink = new GameObjectSpawnSink();
                 var monsterSpawner = new MonsterSpawner(spawnSink);
 
+                // BillingService (Story 5.1, Veilwalkers.Billing) — the FR-13 Shop boundary. Browse the
+                // Credit Pack catalog + purchase exclusively through Google Play Billing (Unity IAP 5 /
+                // Play Billing 8, AC-2) + grant base+bonus into Economy on success (AC-3). Registered LIVE
+                // (like CameraPermissionFlow/ArSafetyGate/ArSessionService/ArcoreAnchorProvider above): it
+                // has NO unauthored-asset blocker (unlike CodexService/EncounterService) — the catalog is
+                // in-code canon and UnityIapStoreAdapter is the platform adapter whose editor path is a
+                // stub-safe no-op (it reports a non-completed Failed store result + no localized prices, so
+                // construction AND an in-editor purchase attempt never throw / never fake-grant). The
+                // adapter's #if UNITY_ANDROID device glue (the real Unity IAP IStoreController purchase flow)
+                // is a TODO wired when com.unity.purchasing is imported + the Shop scene lands (Story 6.3 /
+                // device build) — the same not-yet-imported-package posture as the ArcoreAnchorProvider device
+                // glue. Billing → Economy is STRICTLY one-way (architecture.md:478-480): BillingService is
+                // ctor-injected with the ALREADY-constructed creditService and calls GrantCreditsAsync; the
+                // Economy assembly never references Billing (structurally enforced by the acyclicity test). The
+                // CONSUMER — the Shop UI (Veilwalkers.UI) that renders the catalog (AC-1) + calls PurchaseAsync
+                // + binds OnPurchaseCompleted — is Epic 6 (the chunky Shop surface); it resolves IBillingService
+                // via GameServices.Get and degrades gracefully while unplaced (the CameraPermissionView/
+                // ArSafetyView precedent). 5.1 grants ONCE per successful purchase via GrantCreditsAsync; the
+                // exactly-once reconciliation (PurchaseReconciler — pending-ledger, order-id dedup, acknowledge-
+                // within-window, interruption survival, NFR-4) layers on top in Story 5.2 (architecture.md:522
+                // routes BillingService → Unity IAP → PurchaseReconciler → CreditService). The Guaranteed-Rare
+                // Lure the Veil pack DECLARES is granted/consumed in Story 5.3. The logic is fully proven
+                // headless by Veilwalkers.Billing.Tests over a real CreditService + a FakeStoreAdapter.
+                var creditPackCatalog = new CreditPackCatalog();
+                var storeAdapter = new UnityIapStoreAdapter();
+                var billingService = new BillingService(creditPackCatalog, storeAdapter, creditService);
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -307,6 +335,7 @@ namespace Veilwalkers.App
                 GameServices.Register<PlaneAnchorService>(planeAnchorService);
                 GameServices.Register<AnchorRestoreService>(anchorRestoreService);
                 GameServices.Register<MonsterSpawner>(monsterSpawner);
+                GameServices.Register<IBillingService>(billingService);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
