@@ -36,7 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-15
-# 4.7 done — all epic-4 stories done; epic-4 stays in-progress pending the optional retrospective
+# epic-4 complete — all 7 stories done + retrospective done (2026-06-15); next: epic-5 (Shop & Billing)
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -83,7 +83,7 @@ development_status:
   4-5-slay-a-monster-for-superior-loot: done
   4-6-apply-encounter-charges-stability-boost-nightveil-filter: done
   4-7-materialize-monsters-with-tiered-accessible-entrances: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Shop & Monetization (Google Play Billing)
   epic-5: backlog
