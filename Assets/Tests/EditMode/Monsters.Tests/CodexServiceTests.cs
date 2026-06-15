@@ -360,6 +360,83 @@ namespace Veilwalkers.Monsters.Tests
             Assert.IsTrue(save.Current.Codex.ContainsKey("mon01"));
         }
 
+        // ---- StageScan: the FREE-action scan-flag staging (Story 4.3) ----
+
+        [Test]
+        public void StageScan_on_a_discovered_monster_flips_the_Scanned_flag_only()
+        {
+            // A Scan on an ALREADY-discovered Monster flips Scanned true on the existing entry — and touches
+            // NOTHING else (not Captured/Slain, not the count, no events).
+            var (_, save, codex) = CreateInitialized(new SaveModel());
+            codex.RecordDiscoveryAsync("mon01", DiscoverySource.Capture).GetAwaiter().GetResult();
+            int countBefore = codex.DiscoveredCount;
+            int events = 0;
+            codex.OnMonsterDiscovered += _ => events++;
+
+            CodexService.ScanStage stage = codex.StageScan(save.Current, "mon01");
+
+            Assert.IsTrue(stage.Applied, "An undiscovered→scanned flip is an applied stage.");
+            Assert.IsTrue(save.Current.Codex["mon01"].Scanned, "The Scanned flag is set.");
+            Assert.IsTrue(save.Current.Codex["mon01"].Captured, "The pre-existing Captured flag is untouched.");
+            Assert.AreEqual(countBefore, codex.DiscoveredCount, "Scanning a discovered Monster does not change the count.");
+            Assert.AreEqual(0, events, "StageScan never raises a discovery event (scan ≠ discover).");
+        }
+
+        [Test]
+        public void StageScan_on_an_undiscovered_monster_creates_no_key_and_is_a_noop()
+        {
+            // THE load-bearing invariant: scanning a NOT-yet-discovered Monster creates NO Codex key, so X/67
+            // is never inflated. The persistent stage is a no-op (the undiscovered-Monster progress lives in
+            // the encounter state, recorded by the EncounterService caller — Decision B1).
+            var (_, save, codex) = CreateInitialized(new SaveModel());
+            Assert.AreEqual(0, codex.DiscoveredCount);
+
+            CodexService.ScanStage stage = codex.StageScan(save.Current, "mon01");
+
+            Assert.IsFalse(stage.Applied, "An undiscovered scan is a no-op for the persistent codex.");
+            Assert.IsFalse(codex.IsDiscovered("mon01"), "No key was created — the Monster is still undiscovered.");
+            Assert.AreEqual(0, codex.DiscoveredCount, "X/67 is NOT inflated by a scan-only Monster.");
+        }
+
+        [Test]
+        public void StageScan_is_idempotent_when_already_scanned()
+        {
+            var (_, save, codex) = CreateInitialized(new SaveModel());
+            codex.RecordDiscoveryAsync("mon01", DiscoverySource.Capture).GetAwaiter().GetResult();
+            codex.StageScan(save.Current, "mon01"); // first scan flips it
+
+            CodexService.ScanStage second = codex.StageScan(save.Current, "mon01");
+
+            Assert.IsFalse(second.Applied, "A re-scan of an already-scanned Monster is a no-op stage.");
+            Assert.IsTrue(save.Current.Codex["mon01"].Scanned, "...and the flag stays set.");
+        }
+
+        [Test]
+        public void StageScan_revert_clears_the_flag_without_removing_the_pre_existing_entry()
+        {
+            // The rollback-fidelity pin: reverting a scan stage clears the flag it set on the SAME live entry,
+            // and never removes the pre-existing discovered entry (a naive Codex.Remove would be a bug).
+            var (_, save, codex) = CreateInitialized(new SaveModel());
+            codex.RecordDiscoveryAsync("mon01", DiscoverySource.Capture).GetAwaiter().GetResult();
+            CodexService.ScanStage stage = codex.StageScan(save.Current, "mon01");
+            Assert.IsTrue(save.Current.Codex["mon01"].Scanned);
+
+            stage.Revert();
+
+            Assert.IsFalse(save.Current.Codex["mon01"].Scanned, "Revert cleared the Scanned flag.");
+            Assert.IsTrue(codex.IsDiscovered("mon01"), "The pre-existing discovered entry survives the revert (not removed).");
+            Assert.IsTrue(save.Current.Codex["mon01"].Captured, "Its Captured flag is intact.");
+        }
+
+        [Test]
+        public void StageScan_invalid_or_null_id_throws()
+        {
+            var (_, save, codex) = CreateInitialized(new SaveModel());
+            Assert.Throws<System.ArgumentException>(() => codex.StageScan(save.Current, "nope"));
+            Assert.Throws<System.ArgumentException>(() => codex.StageScan(save.Current, null));
+            Assert.Throws<System.ArgumentNullException>(() => codex.StageScan(null, "mon01"));
+        }
+
         private static string Id(int n) => "mon" + n.ToString("00");
     }
 }

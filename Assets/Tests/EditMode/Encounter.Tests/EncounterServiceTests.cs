@@ -584,5 +584,210 @@ namespace Veilwalkers.Encounter.Tests
             Assert.IsFalse(second.Success, "A second Lure mid-encounter is refused.");
             Assert.AreEqual(9, h.Store.Stored.Credits, "The refused second Lure deducted nothing extra.");
         }
+
+        // ---- FR-7 (Story 4.3): Scan — a FREE action; reveals + records partial codex; never spends ----
+
+        /// <summary>Drive a real Lure so the encounter is Lured (a settled Monster to scan), granting one
+        /// placement + a common roll. Returns the harness with the encounter in Lured.</summary>
+        private static Harness LuredHarness(SaveModel seed)
+        {
+            var h = CreateHarness(seed);
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0); // common roll → mon01
+            LureResult lure = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+            Assert.IsTrue(lure.Success, "Precondition: the Lure settled a Monster (encounter is Lured).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State);
+            return h;
+        }
+
+        [Test]
+        public void Scan_records_in_ONE_save_and_returns_to_Lured()
+        {
+            // AC-1: a Scan on a settled, ALREADY-DISCOVERED Monster records the persistent Scanned flag in
+            // exactly ONE persist and returns the encounter to Lured. Seed the monster as discovered (a key
+            // exists) so the persistent flag flips (the discovered-only path, Decision B1).
+            var seed = new SaveModel { Credits = 10 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+            int savesBefore = h.Store.SaveCalls;
+
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "A Scan on a settled Monster succeeds.");
+            Assert.AreEqual(MonsterId, result.MonsterId);
+            Assert.IsFalse(result.AlreadyScanned, "First scan of this Monster.");
+            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Scanned, "The persistent Scanned flag flipped (discovered Monster).");
+            Assert.IsTrue(h.Store.Stored.Codex[MonsterId].Scanned, "...and it persisted.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: exactly ONE SaveAsync for the Scan.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The Scan returns the encounter to Lured.");
+        }
+
+        [Test]
+        public void Scan_records_partial_progress_even_before_discovery_without_inflating_the_count()
+        {
+            // AC-2 (THE load-bearing pin): a Scan on a NOT-yet-discovered Monster records partial progress
+            // (the encounter scan-state) WITHOUT creating a Codex key / incrementing X/67 and WITHOUT raising
+            // OnMonsterDiscovered. Scan ≠ discover (Decision B1).
+            var h = LuredHarness(new SaveModel { Credits = 10 }); // mon01 is NOT discovered (no codex key)
+            int discoveredCountBefore = h.Codex.DiscoveredCount;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "Scanning an undiscovered Monster still succeeds (partial progress).");
+            Assert.AreEqual(discoveredCountBefore, h.Codex.DiscoveredCount, "X/67 is NOT inflated by a scan-only Monster.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "A Scan does NOT discover (no Codex key created).");
+            Assert.AreEqual(0, discoveryEvents, "A Scan raises NO discovery event (scan ≠ discover).");
+        }
+
+        [Test]
+        public void Scan_never_changes_the_credit_balance_or_charges()
+        {
+            // AC-3 (THE free-action pin): no Scan path touches Credits or any charge.
+            var seed = new SaveModel { Credits = 7, StrongCaptureCharges = 2, StabilityBoostCharges = 1 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+            int creditsBefore = h.Store.Stored.Credits;
+
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(creditsBefore, h.Store.Stored.Credits, "Scan is FREE — the persisted balance is unchanged.");
+            Assert.AreEqual(creditsBefore, h.Save.Current.Credits, "...and the in-memory balance is unchanged.");
+            Assert.AreEqual(2, h.Progression.GetChargeCount(ChargeType.StrongCapture), "No charge consumed.");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost), "No charge consumed.");
+        }
+
+        [Test]
+        public void Idempotent_rescan_records_nothing_new_and_does_not_persist_again()
+        {
+            // AC-2: scanning the SAME Monster again THIS encounter is a pure no-op — no second persist,
+            // AlreadyScanned == true, Credits untouched.
+            var seed = new SaveModel { Credits = 10 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+
+            ScanResult first = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(first.Success);
+            Assert.IsFalse(first.AlreadyScanned);
+            int savesAfterFirst = h.Store.SaveCalls;
+
+            ScanResult second = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(second.Success, "A re-scan is still a valid (free) success.");
+            Assert.IsTrue(second.AlreadyScanned, "...flagged as already scanned this encounter.");
+            Assert.AreEqual(savesAfterFirst, h.Store.SaveCalls, "No second persist for an idempotent re-scan (save-count unchanged).");
+        }
+
+        [Test]
+        public void Scan_persist_fault_rolls_back_both_slices_and_keeps_the_encounter_live()
+        {
+            // NFR-3: a persist fault reverts BOTH the encounter scan-state AND the persistent flag; a typed
+            // PersistenceFailed is returned; the encounter stays live (Lured) for a free retry; Credits unchanged.
+            var seed = new SaveModel { Credits = 10 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+            int creditsAfterLure = h.Save.Current.Credits; // 9 (Basic cost 1) — the Scan must not change this
+            h.Store.FailNextSave = true;
+
+            LogAssert.ignoreFailingMessages = true; // SaveService + EncounterService both log on the fault
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "A persist fault is a typed failure, not a faulted task.");
+            Assert.AreEqual(ScanFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.IsFalse(h.Codex.GetEntry(MonsterId).Scanned, "The Scanned flag rolled back (not leaked).");
+            Assert.IsFalse(h.Store.Stored.Codex[MonsterId].Scanned, "...and nothing persisted the flag.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "Credits untouched by a Scan (free action) regardless of the fault.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A failed Scan keeps the encounter live (free Retry).");
+
+            // And the encounter scan-state reverted: a subsequent successful scan is NOT 'already scanned'.
+            ScanResult retry = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(retry.Success);
+            Assert.IsFalse(retry.AlreadyScanned, "The rolled-back scan did not leave stale encounter scan-state.");
+        }
+
+        [Test]
+        public void Scan_out_of_a_live_encounter_is_a_typed_NotSettled_failure_that_persists_nothing()
+        {
+            // Decision E: a Scan when NOT in a live encounter (Idle) is NotSettled — NOT the misleading
+            // inherited PersistenceFailed — and nothing persists.
+            var seed = new SaveModel { Credits = 10 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = CreateHarness(seed); // Idle (no Lure)
+            int savesBefore = h.Store.SaveCalls;
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("no settled Monster"));
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(ScanFailureReason.NotSettled, result.FailureReason, "Out-of-sequence Scan has a distinct reason.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing persisted.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "State unchanged.");
+        }
+
+        [Test]
+        public void Scan_invalid_or_null_monster_id_throws_a_programmer_error()
+        {
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            Assert.Throws<ArgumentException>(() => h.Encounter.TryScanAsync("not-a-monster").GetAwaiter().GetResult());
+            Assert.Throws<ArgumentException>(() => h.Encounter.TryScanAsync(null).GetAwaiter().GetResult());
+        }
+
+        [Test]
+        public void Rescan_after_a_mid_encounter_discovery_persists_the_flag_and_is_not_already_scanned()
+        {
+            // CR patch: a Monster scanned while UNDISCOVERED (encounter-state only, persistent flag a no-op),
+            // then discovered mid-encounter (a Capture), then re-scanned — the re-scan flips the persistent
+            // flag for the FIRST time, so it DID record new durable data: it must persist (one SaveAsync) and
+            // report AlreadyScanned == FALSE (it is NOT a pure no-op), despite being in the encounter scan-set.
+            var seed = new SaveModel { Credits = 10, StrongCaptureCharges = 1 };
+            var h = LuredHarness(seed);
+
+            // (1) Scan while undiscovered — records encounter-state progress only (no persistent flag / key).
+            ScanResult firstScan = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(firstScan.Success);
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "Scan did not discover.");
+
+            // (2) Discover the Monster mid-encounter via a Capture (Lured → Acting → composed write → Lured).
+            h.Encounter.BeginAction();
+            h.Encounter.TryCaptureInEncounterAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The Capture discovered the Monster.");
+            Assert.IsFalse(h.Codex.GetEntry(MonsterId).Scanned, "But the persistent Scanned flag is not yet set.");
+            int savesBeforeRescan = h.Store.SaveCalls;
+
+            // (3) Re-scan — now flips the persistent Scanned flag for the first time → persists, NOT already-scanned.
+            ScanResult rescan = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(rescan.Success);
+            Assert.IsFalse(rescan.AlreadyScanned, "A re-scan that flips the persistent flag recorded NEW data — not 'already scanned'.");
+            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Scanned, "The persistent flag is now set.");
+            Assert.IsTrue(h.Store.Stored.Codex[MonsterId].Scanned, "...and it persisted.");
+            Assert.AreEqual(savesBeforeRescan + 1, h.Store.SaveCalls, "The flag-flipping re-scan persisted once (AR-8).");
+        }
+
+        [Test]
+        public void Scan_of_a_monster_scanned_in_a_prior_encounter_persists_once_and_is_not_already_scanned()
+        {
+            // Spec-sanctioned (AC-2): a Monster discovered + scanned in a PRIOR encounter (persistent flag
+            // already true) but NOT yet scanned THIS encounter records the encounter-state on its first scan
+            // this encounter — a new encounter-state entry — so it persists once and is NOT 'already scanned'.
+            var seed = new SaveModel { Credits = 10 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Scanned = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+            int savesBefore = h.Store.SaveCalls;
+
+            ScanResult result = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success);
+            Assert.IsFalse(result.AlreadyScanned, "First scan THIS encounter records new encounter-state — not 'already scanned'.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "It persists once (the encounter-state changed).");
+
+            // The SECOND scan this encounter IS the pure no-op.
+            ScanResult second = h.Encounter.TryScanAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(second.AlreadyScanned, "Now it is already scanned this encounter — a pure no-op.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "No second persist.");
+        }
     }
 }

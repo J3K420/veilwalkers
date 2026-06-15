@@ -418,6 +418,57 @@ namespace Veilwalkers.Monsters
             }
         }
 
+        /// <summary>
+        /// Stage a SCAN's IN-MEMORY codex mutation WITHOUT taking this service's lock and WITHOUT persisting —
+        /// the FREE-action (Story 4.3) sibling of <see cref="StageDiscovery"/>, for the composed Encounter
+        /// Scan write (which owns the shared lock + the single <c>SaveAsync</c>, AR-8). Scanning is NOT
+        /// discovering (the <see cref="DiscoverySource"/> enum deliberately excludes Scan): this flips the
+        /// <see cref="CodexEntryData.Scanned"/> flag ONLY on an ALREADY-DISCOVERED Monster (a key already in
+        /// <see cref="SaveModel.Codex"/>) — it NEVER CREATES a key, so a scan-only Monster never inflates the
+        /// X/67 discovered count, and it NEVER raises <see cref="OnMonsterDiscovered"/>/<see cref="OnCodexCompleted"/>.
+        /// <para>
+        /// Three cases (mirroring the <see cref="StageDiscovery"/> idempotency + rollback discipline, minus the
+        /// create/first-discovery machinery a Scan must not trigger):
+        /// <list type="bullet">
+        /// <item>key ABSENT (undiscovered) → <see cref="ScanStage.NoOp"/>: the persistent codex is untouched
+        ///   (no key created). The undiscovered-Monster scan PROGRESS lives in the encounter state, recorded by
+        ///   the caller (the composed Scan write), NOT here — Story 4.3 Decision B1.</item>
+        /// <item>key present, <c>Scanned</c> already true → <see cref="ScanStage.NoOp"/> (idempotent re-scan).</item>
+        /// <item>key present, <c>Scanned</c> false → flip it true on that existing entry; <see cref="ScanStage.Revert"/>
+        ///   clears it back to false on a persist fault (NEVER a <c>Codex.Remove</c> — that would delete a
+        ///   pre-existing discovered entry).</item>
+        /// </list>
+        /// Throws for a null model / invalid id (programmer error, same as <see cref="StageDiscovery"/>). NOT
+        /// lock-protected: the CALLER holds the shared Economy lock around the stage + persist span.
+        /// </para>
+        /// </summary>
+        public ScanStage StageScan(SaveModel model, string id)
+        {
+            if (model == null)
+            {
+                throw new ArgumentNullException(nameof(model));
+            }
+
+            if (string.IsNullOrEmpty(id) || !MonsterDatabase.IsValidMonsterId(id))
+            {
+                throw new ArgumentException(
+                    $"'{id}' is not a valid Monster id (expected mon01..mon{MonsterDatabase.UniverseCount:00}).",
+                    nameof(id));
+            }
+
+            // Scan flips the persistent flag ONLY on an already-discovered Monster. Key-presence == discovered
+            // (the canonical rule); an absent key is left absent (no count inflation — Decision B1).
+            bool keyExists = model.Codex.TryGetValue(id, out CodexEntryData entry);
+            if (!keyExists || entry == null || entry.Scanned)
+            {
+                // Undiscovered (no key / null-valued key) OR already scanned → no persistent codex change.
+                return ScanStage.NoOp();
+            }
+
+            entry.Scanned = true;
+            return ScanStage.Flipped(entry);
+        }
+
         private static bool IsFlagSet(CodexEntryData entry, DiscoverySource via) =>
             via == DiscoverySource.Capture ? entry.Captured : entry.Slain;
 
@@ -595,6 +646,48 @@ namespace Veilwalkers.Monsters
                 }
 
                 _service.RaiseStagedDiscovery(_id, IsFirstDiscovery, Count);
+            }
+        }
+
+        /// <summary>
+        /// A staged-but-not-persisted SCAN mutation produced by <see cref="StageScan"/>, for the Story 4.3
+        /// composed Encounter Scan write. The composed write holds this between mutating the model and the
+        /// single <c>SaveService.SaveAsync</c>: on a persist FAULT it calls <see cref="Revert"/> (clears the
+        /// <c>Scanned</c> flag it set, back to false on the same live entry). A Scan raises NO codex events
+        /// (scanning is not discovering — Story 4.3 Decision B), so there is deliberately no
+        /// <c>RaiseCommittedEvents</c> here. <see cref="Applied"/> is false for a no-op (undiscovered key, or
+        /// already scanned) — <see cref="Revert"/> then does nothing.
+        /// </summary>
+        public readonly struct ScanStage
+        {
+            private readonly CodexEntryData _flippedEntry;
+
+            /// <summary>True when this stage actually flipped <c>Scanned</c> false→true on an existing entry
+            /// (so <see cref="Revert"/> must clear it on a fault). False for a no-op (undiscovered / already
+            /// scanned) — nothing to revert.</summary>
+            public bool Applied => _flippedEntry != null;
+
+            private ScanStage(CodexEntryData flippedEntry)
+            {
+                _flippedEntry = flippedEntry;
+            }
+
+            internal static ScanStage NoOp() => new ScanStage(null);
+
+            internal static ScanStage Flipped(CodexEntryData entry) => new ScanStage(entry);
+
+            /// <summary>
+            /// Restore the pre-scan state on a persist fault: clear the <c>Scanned</c> flag we set on the
+            /// same live entry. NEVER removes a key (a Scan only ever flips a flag on an ALREADY-discovered
+            /// entry — <see cref="StageScan"/> never creates a key), so the pre-existing discovered entry is
+            /// preserved. A no-op stage does nothing.
+            /// </summary>
+            public void Revert()
+            {
+                if (_flippedEntry != null)
+                {
+                    _flippedEntry.Scanned = false;
+                }
             }
         }
     }

@@ -76,6 +76,15 @@ namespace Veilwalkers.Encounter
         // leak). Set on a successful Lure; cleared + released on EndEncounter.
         private int[] _activeSpawnHandles = Array.Empty<int>();
 
+        // The set of Monster ids scanned THIS encounter (Story 4.3, FR-7 — Decision B1). The in-memory scan
+        // PROGRESS record: a Scan records partial progress here EVEN for a not-yet-discovered Monster (so AC-2
+        // "partial Codex data even before Capture/Slay" holds WITHOUT creating a Codex key / inflating X/67),
+        // and additionally flips the persistent CodexEntryData.Scanned flag iff the Monster is already
+        // discovered (CodexService.StageScan). Cleared on EndEncounter. The persisted disk round-trip of this
+        // per-monster scan state (across a Shop navigation / relaunch) is Story 5.4 — 4.3 holds it in memory
+        // only (the 4.1 `_activeAnchors` precedent).
+        private readonly HashSet<string> _scannedThisEncounter = new HashSet<string>();
+
         /// <summary>
         /// Raised when a composed action cannot afford its credit spend (AR-11): the service NEVER opens the
         /// Shop or calls Billing/UI — App/UI decides the top-up prompt. Surfaced at the encounter altitude so
@@ -151,6 +160,7 @@ namespace Veilwalkers.Encounter
 
             _activeSpawnHandles = Array.Empty<int>();
             _activeAnchors = Array.Empty<AnchorToken>();
+            _scannedThisEncounter.Clear(); // per-encounter scan progress does not carry to the next encounter
             return _stateMachine.Reset();
         }
 
@@ -502,6 +512,173 @@ namespace Veilwalkers.Encounter
             }
 
             return result;
+        }
+
+        // ---- FR-7 (Story 4.3): Scan — a FREE in-encounter action (no Credits, no charges) ----
+
+        /// <summary>
+        /// Scan the settled Monster <paramref name="monsterId"/> (Story 4.3, FR-7) — a FREE action: it records
+        /// partial Codex progress and NEVER changes the Credit balance or any charge (AC-3). Drives the
+        /// in-encounter loop (Lured → Acting → Resolving → Lured) around ONE atomic save write (AR-8), and
+        /// returns a typed <see cref="ScanResult"/> — never throws for an expected failure (AR-7); throws only
+        /// for a null/empty id (programmer error).
+        /// <para>
+        /// <b>Scan ≠ discover (Decision B1).</b> A Scan records the Monster's scan progress in the encounter
+        /// state (<see cref="_scannedThisEncounter"/>) — so partial data is recorded EVEN before a Capture/Slay
+        /// discovery (AC-2) WITHOUT creating a Codex key / inflating the X/67 count — and additionally flips the
+        /// persistent <see cref="CodexEntryData.Scanned"/> flag iff the Monster is ALREADY discovered
+        /// (<see cref="CodexService.StageScan"/>). It raises NO discovery event.
+        /// </para>
+        /// <para>
+        /// <b>Idempotent re-scan.</b> Scanning a Monster already scanned THIS encounter is a pure no-op (no
+        /// persist) returning success with <see cref="ScanResult.AlreadyScanned"/> = true — the player may
+        /// re-scan freely; it records nothing new and never touches Credits.
+        /// </para>
+        /// </summary>
+        public async Task<ScanResult> TryScanAsync(string monsterId)
+        {
+            // Validate the FULL id up front (programmer error — same contract as TryCaptureAsync/StageScan)
+            // BEFORE touching the state machine, so a bad id never leaves the machine stranded mid-resolve.
+            if (string.IsNullOrEmpty(monsterId) || !MonsterDatabase.IsValidMonsterId(monsterId))
+            {
+                throw new ArgumentException(
+                    $"'{monsterId}' is not a valid Monster id (expected mon01..mon{MonsterDatabase.UniverseCount:00}).",
+                    nameof(monsterId));
+            }
+
+            // The state machine must be able to enter Acting — i.e. a live encounter with a settled Monster
+            // (AC-1). A Scan out of sequence (no Lured encounter) is a typed NotSettled failure, NOT the
+            // misleading inherited PersistenceFailed+0 (deferred-work.md:21 — 4.3 gives Scan a distinct reason).
+            if (!_stateMachine.BeginAction())
+            {
+                GameLog.Warn(
+                    $"EncounterService.TryScanAsync ignored — no settled Monster to scan (state: {_stateMachine.State}).");
+                return ScanResult.Failed(ScanFailureReason.NotSettled);
+            }
+
+            // Lured → Acting succeeded above; now open the commit window (Acting → Resolving), run the free
+            // write, and settle the resolve (Resolving → Lured, or a deferred suspend — decision H2). Mirrors
+            // RunActionAsync, but for a charge-free / discovery-free action.
+            if (!_stateMachine.BeginResolve())
+            {
+                // Should be unreachable (we just entered Acting → BeginResolve from Acting cannot fail in
+                // single-threaded gameplay). But RECONCILE rather than stranding the machine in Acting — a
+                // stuck-in-Acting encounter is bricked (every later BeginAction needs Lured). FailResolve only
+                // works from Resolving (we are in Acting), so the safe abort is the full teardown EndEncounter():
+                // it Resets the machine to Idle AND releases the active Lure's pooled spawns + clears the
+                // encounter scan-state (no leak), the [[failure-path-cleanup-parity]] discipline.
+                GameLog.Error(
+                    "EncounterService.TryScanAsync: could not begin resolve after entering Acting (unexpected) — " +
+                    "ending the encounter to avoid stranding it in Acting.");
+                EndEncounter();
+                return ScanResult.Failed(ScanFailureReason.NotSettled);
+            }
+
+            ScanResult result = await CommitScanAsync(monsterId).ConfigureAwait(false);
+
+            if (result.Success)
+            {
+                _stateMachine.CompleteResolve();
+            }
+            else
+            {
+                _stateMachine.FailResolve();
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// The atomic SCAN composed write (AR-8) — the FREE sibling of <see cref="CommitActionAsync"/>
+        /// (charge) / <see cref="CommitLureSpendAsync"/> (credits): it spends NEITHER. Same pipeline shape:
+        /// acquire the SHARED <see cref="SaveMutationLock"/> once (a Scan still mutates the shared
+        /// <see cref="SaveModel"/>, so it MUST serialize) → capture the model ref once → stage the scan delta
+        /// (the in-encounter progress record + <see cref="CodexService.StageScan"/> for the discovered-only
+        /// persistent flag) → ONE <c>SaveAsync</c> → recovery-swap guard → whole-mutation rollback on any
+        /// fault → release. NEVER mutates <c>model.Credits</c> or any charge (AC-3 — structurally absent here).
+        /// <para>
+        /// A pure no-op (already scanned this encounter AND no new persistent flag to set) skips the persist
+        /// entirely (save-count 0) and returns success with <see cref="ScanResult.AlreadyScanned"/> = true.
+        /// </para>
+        /// </summary>
+        private async Task<ScanResult> CommitScanAsync(string monsterId)
+        {
+            CodexService.ScanStage stage = default;
+            bool alreadyScannedThisEncounter = _scannedThisEncounter.Contains(monsterId);
+            // Whether THIS call added the monster to the encounter scan-set — the single source of truth for the
+            // rollback (both the swap branch AND the catch must revert exactly what this call mutated). Declared
+            // out here so BOTH fault branches use the SAME variable, not two equivalent expressions (CR patch —
+            // [[failure-path-cleanup-parity]]: revert provably mirrors the add).
+            bool addedToEncounter = false;
+
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+
+                // Stage the persistent flag (discovered-only; a no-op for an undiscovered or already-scanned
+                // entry — it never creates a key, so X/67 is never inflated). Validates the id (throws on a
+                // bad id, like RecordDiscoveryAsync — a programmer error).
+                stage = _codexService.StageScan(model, monsterId);
+
+                // The pure no-op: already recorded in the encounter AND nothing new to persist (no flag flip).
+                // Skip the SaveAsync entirely (AR-8 — no write when nothing changed; the idempotent re-scan).
+                if (alreadyScannedThisEncounter && !stage.Applied)
+                {
+                    return ScanResult.Succeeded(monsterId, alreadyScanned: true);
+                }
+
+                try
+                {
+                    // ONE persist for the scan delta (AR-8). The in-encounter progress is recorded BEFORE the
+                    // persist so a swap/throw rolls it back alongside the codex flag.
+                    addedToEncounter = _scannedThisEncounter.Add(monsterId);
+
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+
+                    if (ReferenceEquals(_saveService.Current, model))
+                    {
+                        // AlreadyScanned is true ONLY when this Scan recorded NOTHING new — neither a persistent
+                        // flag flip (stage.Applied) NOR a new encounter-state entry (addedToEncounter). A re-scan
+                        // that flips the persistent flag for the first time (undiscovered → scanned, then
+                        // discovered mid-encounter, then re-scanned) DID persist new data, so it is NOT
+                        // "already scanned" (CR patch — the contract is "recorded nothing new").
+                        bool recordedNothingNew = !stage.Applied && !addedToEncounter;
+                        return ScanResult.Succeeded(monsterId, alreadyScanned: recordedNothingNew);
+                    }
+
+                    // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at, NOT this
+                    // scan. Revert BOTH the encounter progress AND the codex flag onto the captured ref.
+                    if (addedToEncounter)
+                    {
+                        _scannedThisEncounter.Remove(monsterId);
+                    }
+
+                    stage.Revert();
+                    GameLog.Error(
+                        $"EncounterService: a Scan of '{monsterId}' rolled back — the save model was swapped " +
+                        "mid-operation (recovery raced a mutation).");
+                    return ScanResult.Failed(ScanFailureReason.PersistenceFailed);
+                }
+                catch (Exception ex)
+                {
+                    // Persist fault: revert BOTH slices onto the captured ref — never recompute. Use the SAME
+                    // addedToEncounter local as the swap branch so the revert provably mirrors the add.
+                    if (addedToEncounter)
+                    {
+                        _scannedThisEncounter.Remove(monsterId);
+                    }
+
+                    stage.Revert();
+                    GameLog.Error(
+                        $"EncounterService: a Scan of '{monsterId}' rolled back — persist failed. {ex.Message}");
+                    return ScanResult.Failed(ScanFailureReason.PersistenceFailed);
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
         }
 
         /// <summary>The representative IN-ENCOUNTER composed action (proves AC-2 + the state-machine loop):

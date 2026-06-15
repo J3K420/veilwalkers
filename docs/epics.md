@@ -651,6 +651,15 @@ So that I learn about it and progress its Codex entry without spending.
 **When** the player taps Scan
 **Then** information is revealed, partial Codex data is recorded even before Capture/Slay, and the Credit balance never changes.
 
+<!-- CLARIFIED (Story 4.3, 2026-06-14): "partial Codex data recorded even before Capture/Slay" means a Scan
+records scan PROGRESS without it counting as a Codex DISCOVERY — scanning does NOT increment the X/67
+discovered count and does NOT raise OnMonsterDiscovered (the `DiscoverySource` enum deliberately excludes
+Scan). Concretely (Decision B1): a Scan on a not-yet-discovered Monster records its progress in the encounter
+state (persisted across a Shop round-trip by Story 5.4) WITHOUT creating a Codex key; a Scan on an
+already-discovered Monster additionally flips the persistent `CodexEntryData.Scanned` flag. This keeps
+"key-presence == discovered == X/67" inviolate. -->
+
+
 ### Story 4.4: Capture a Monster (free base / Strong Capture)
 
 As a player,
