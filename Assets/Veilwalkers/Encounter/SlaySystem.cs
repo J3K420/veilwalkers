@@ -38,6 +38,12 @@ namespace Veilwalkers.Encounter
         /// <summary>Slay-attempt success probability (provisional, OQ-9).</summary>
         public const double SlaySuccessChance = 0.65;
 
+        // Story 4.6 (FR-10) — the Stability Boost ease bonus added to the Slay success chance for the remainder
+        // of an encounter in which a StabilityBoost charge was applied (AC-1). The MAGNITUDE lives on ExtrasSystem
+        // (the single extras-tunables home — CR patch: it was duplicated here AND on CaptureSystem and could
+        // silently diverge; one Stability Boost must ease Capture and Slay by the SAME amount). Clamped < 1.0 so
+        // a Slay is never a certainty. The AC pins the BEHAVIOR — eased STRICTLY greater than un-eased — NOT the magnitude.
+
         private readonly IRandom _random;
         private readonly EconomyConfig _config;
 
@@ -52,11 +58,25 @@ namespace Veilwalkers.Encounter
         /// cost before the spend.</summary>
         public int Cost => _config.SlayCost;
 
+        /// <summary>The Slay success probability, optionally EASED by an active Stability Boost (Story 4.6,
+        /// AC-1). <paramref name="eased"/> = true adds <see cref="ExtrasSystem.StabilityBoostEase"/> (clamped just below
+        /// certainty), so the eased chance is STRICTLY greater than the un-eased one (the mutation-testable AC).
+        /// The un-eased value is byte-identical to the pre-4.6 behavior.</summary>
+        public double SuccessChanceOf(bool eased) =>
+            eased ? Math.Min(SlaySuccessChance + ExtrasSystem.StabilityBoostEase, 0.999) : SlaySuccessChance;
+
         /// <summary>
         /// Roll a Slay attempt: true if it SUCCEEDS (the Monster is slain — the 3-Credit spend + discovery + XP
         /// commit), false if it MISSES (a free Retry is offered, no Credits lost — AC-3). One draw on
         /// <see cref="IRandom.NextDouble"/> against <see cref="SlaySuccessChance"/>.
         /// </summary>
-        public bool RollSlay() => _random.NextDouble() < SlaySuccessChance;
+        public bool RollSlay() => RollSlay(eased: false);
+
+        /// <summary>
+        /// Roll a Slay attempt, optionally EASED by an active Stability Boost (Story 4.6, AC-1). One draw on
+        /// <see cref="IRandom.NextDouble"/> against <see cref="SuccessChanceOf(bool)"/> — an eased roll uses the
+        /// strictly-higher eased chance, so the SAME draw that misses un-eased may succeed eased.
+        /// </summary>
+        public bool RollSlay(bool eased) => _random.NextDouble() < SuccessChanceOf(eased);
     }
 }

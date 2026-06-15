@@ -1325,5 +1325,418 @@ namespace Veilwalkers.Encounter.Tests
             Assert.IsTrue(second.AlreadyScanned, "Now it is already scanned this encounter — a pure no-op.");
             Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "No second persist.");
         }
+
+        // ---- FR-10 (Story 4.6): apply encounter extras — Stability Boost / Nightveil Filter ----
+        // The SIXTH atomic-write sibling: a charge-only consume (no Credits, no codex, no XP) + an in-encounter
+        // modifier. Reuses WinDraw/LoseDraw (the FakeRandom empty-queue default is 0.0 = a WIN, so every roll-path
+        // pin enqueues its draw explicitly). NOTE: LuredHarness does a Basic Lure (cost 1) first, consuming one
+        // NextDouble (the rare-gate, enqueued 0.99) + one Next (the index, enqueued 0) from the shared queues —
+        // so a subsequent Capture/Slay roll draws the NEXT enqueued NextDouble.
+
+        [Test]
+        public void Stability_boost_consumes_one_charge_never_credits_in_ONE_save_and_records_the_modifier()
+        {
+            // AC-1: applying Stability Boost consumes EXACTLY one StabilityBoost charge, touches NO Credits, in
+            // EXACTLY one save, and records the in-encounter modifier; the encounter returns to Lured.
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 });
+            int creditsAfterLure = h.Save.Current.Credits; // 9 (Basic cost 1)
+            int savesBefore = h.Store.SaveCalls;
+
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "The extra was applied cleanly.");
+            Assert.AreEqual(ExtraKind.StabilityBoost, result.Kind);
+            Assert.AreEqual(0, result.RemainingCharges, "Exactly one charge consumed.");
+            Assert.AreEqual(0, h.Store.Stored.StabilityBoostCharges, "...and it persisted (charge slice).");
+            Assert.AreEqual(0, h.Progression.GetChargeCount(ChargeType.StabilityBoost), "Charge consumed (live count).");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "AC-1: the Credit balance is NEVER touched.");
+            Assert.AreEqual(creditsAfterLure, h.Store.Stored.Credits, "...Credits byte-identical in the persisted snapshot.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: exactly ONE SaveAsync for the charge decrement.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter returns to Lured.");
+        }
+
+        [Test]
+        public void Stability_boost_ease_uses_a_strictly_higher_chance_than_unboosted_for_capture_and_slay()
+        {
+            // AC-1 PRIMARY pin (the threshold inequality — tuner-proof, mutation-testable, does not fight
+            // FakeRandom): the eased success chance is STRICTLY greater than the un-eased one, for base Capture,
+            // Strong Capture, AND Slay. A no-op boost that records the consume but never widens the threshold → red.
+            var h = CreateHarness(new SaveModel());
+            Assert.Greater(h.CaptureSystem.SuccessChanceOf(strong: false, eased: true),
+                h.CaptureSystem.SuccessChanceOf(strong: false, eased: false),
+                "Stability Boost must strictly raise the base-Capture success chance.");
+            Assert.Greater(h.CaptureSystem.SuccessChanceOf(strong: true, eased: true),
+                h.CaptureSystem.SuccessChanceOf(strong: true, eased: false),
+                "Stability Boost must strictly raise the Strong-Capture success chance.");
+            Assert.Greater(h.SlaySystem.SuccessChanceOf(eased: true), h.SlaySystem.SuccessChanceOf(eased: false),
+                "Stability Boost must strictly raise the Slay success chance.");
+        }
+
+        [Test]
+        public void Stability_boost_makes_a_would_miss_capture_succeed_end_to_end()
+        {
+            // AC-1 end-to-end behavioral pin: a Capture draw that lands BETWEEN the un-eased and eased chances
+            // MISSES without the boost but SUCCEEDS with it active — proving the service actually threads
+            // _activeExtras into the roll (not a no-op consume). Base chance 0.50, eased 0.60 → a 0.55 draw
+            // straddles them. LuredHarness consumed the Lure's draws; the Capture roll draws the next enqueued.
+            const double StraddleDraw = 0.55; // >= 0.50 (miss un-eased), < 0.60 (win eased)
+
+            // (a) WITHOUT the boost: the straddle draw misses.
+            var hPlain = LuredHarness(new SaveModel { Credits = 10 });
+            hPlain.Random.EnqueueDouble(StraddleDraw);
+            CaptureResult plain = hPlain.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsFalse(plain.Captured, "Without Stability Boost the straddle draw misses (un-eased chance 0.50).");
+
+            // (b) WITH the boost applied first: the SAME draw now succeeds.
+            var hBoost = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 });
+            ApplyExtraResult applied = hBoost.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            Assert.IsTrue(applied.Success, "Precondition: the boost applied.");
+            hBoost.Random.EnqueueDouble(StraddleDraw);
+            CaptureResult boosted = hBoost.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.IsTrue(boosted.Captured, "With Stability Boost active the SAME straddle draw captures (eased chance 0.60).");
+        }
+
+        [Test]
+        public void Nightveil_filter_consumes_one_charge_never_credits_in_ONE_save()
+        {
+            // AC-2: applying Nightveil Filter consumes EXACTLY one NightveilFilter charge, touches NO Credits, in
+            // exactly one save.
+            var h = LuredHarness(new SaveModel { Credits = 10, NightveilFilterCharges = 1 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            int savesBefore = h.Store.SaveCalls;
+
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.NightveilFilter).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(ExtraKind.NightveilFilter, result.Kind);
+            Assert.AreEqual(0, result.RemainingCharges, "Exactly one charge consumed.");
+            Assert.AreEqual(0, h.Store.Stored.NightveilFilterCharges, "...and it persisted.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "AC-2: the Credit balance is NEVER touched.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: exactly ONE SaveAsync.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter returns to Lured.");
+        }
+
+        [Test]
+        public void Nightveil_filter_flags_the_visual_filter_active_for_the_encounter()
+        {
+            // AC-2 filter-flag pin (the visual-filter LOGICAL state — distinct from the rarity pin): after a
+            // successful Nightveil apply, the modifier is recorded ACTIVE so the Epic-6 render layer can read
+            // "filter on". Asserted via the observable rarity boost being live (the modifier the render flag
+            // shares); a regression that drops the logical active state → the boost vanishes → red. Kept separate
+            // from the rarity-magnitude pin so dropping the flag is caught independently.
+            var h = LuredHarness(new SaveModel { Credits = 10, NightveilFilterCharges = 1 });
+            // Before: the rare chance is the un-boosted Basic chance.
+            double before = h.LureSystem.RareChanceOf(LureKind.Basic, nightveilActive: false);
+
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.NightveilFilter).GetAwaiter().GetResult();
+            Assert.IsTrue(result.Success, "Precondition: Nightveil applied.");
+
+            // The modifier is now active: the boosted rare chance (the render layer + the rarity roll both read
+            // the same active-Nightveil state) is strictly higher than the un-boosted one.
+            double boosted = h.LureSystem.RareChanceOf(LureKind.Basic, nightveilActive: true);
+            Assert.Greater(boosted, before, "Nightveil active flags the filter/rarity-boost state for the encounter.");
+        }
+
+        [Test]
+        public void Nightveil_rarity_boost_uses_a_strictly_higher_rare_chance_than_unboosted()
+        {
+            // AC-2 PRIMARY rarity pin (the threshold inequality — tuner-proof): the boosted rare chance strictly
+            // exceeds the un-boosted one for every kind. A no-op that never raises the rare threshold → red.
+            var h = CreateHarness(new SaveModel());
+            foreach (LureKind kind in new[] { LureKind.Basic, LureKind.Premium, LureKind.Multi })
+            {
+                Assert.Greater(h.LureSystem.RareChanceOf(kind, nightveilActive: true),
+                    h.LureSystem.RareChanceOf(kind, nightveilActive: false),
+                    $"Nightveil must strictly raise the rare chance for {kind}.");
+            }
+        }
+
+        [Test]
+        public void Nightveil_rarity_boost_turns_a_common_roll_into_a_rare_one_end_to_end()
+        {
+            // AC-2 end-to-end behavioral pin: a Lure rare-gate draw that lands BETWEEN the un-boosted Basic
+            // chance (0.15) and the boosted one (0.35) yields a COMMON pick un-boosted but a RARE pick boosted —
+            // proving the service threads the active Nightveil into the Lure roll. Drive a fresh Lure within an
+            // active-Nightveil encounter. The roster: mon01 Common, mon02 Rare, mon03 Epic (mon02/mon03 are
+            // rare-or-better). Index draws (Next) select within the matched subset.
+            const double StraddleDraw = 0.25; // >= 0.15 (common un-boosted), < 0.35 (rare boosted)
+
+            // The LureSystem roll is pure — pin it directly through the shared FakeRandom (the same seam the
+            // service uses). (a) un-boosted: a common id; (b) boosted: a rare-or-better id, SAME draw.
+            var hPlain = CreateHarness(new SaveModel());
+            hPlain.Random.EnqueueDouble(StraddleDraw).EnqueueNext(0);
+            string plain = hPlain.LureSystem.RollMonster(LureKind.Basic, nightveilActive: false);
+            Assert.AreEqual("mon01", plain, "Un-boosted, the straddle draw lands in the common subset.");
+
+            var hBoost = CreateHarness(new SaveModel());
+            hBoost.Random.EnqueueDouble(StraddleDraw).EnqueueNext(0);
+            string boosted = hBoost.LureSystem.RollMonster(LureKind.Basic, nightveilActive: true);
+            Assert.AreNotEqual("mon01", boosted, "Boosted, the SAME draw lands in the rare-or-better subset (mon02/mon03).");
+        }
+
+        [Test]
+        public void Apply_extra_with_zero_charges_is_blocked_never_negative_and_persists_nothing()
+        {
+            // AC-3 (BOTH extras): zero charges → blocked, InsufficientCharges, no decrement (count stays 0, never
+            // negative), save-count 0, NO modifier recorded, Credits byte-identical, encounter stays live.
+            foreach (ExtraKind kind in new[] { ExtraKind.StabilityBoost, ExtraKind.NightveilFilter })
+            {
+                var h = LuredHarness(new SaveModel { Credits = 10 }); // both charge fields default to 0
+                int creditsAfterLure = h.Save.Current.Credits;
+                int savesBefore = h.Store.SaveCalls;
+
+                ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(kind).GetAwaiter().GetResult();
+
+                ChargeType chargeType = ExtrasSystem.ChargeTypeOf(kind);
+                Assert.IsFalse(result.Success, $"{kind}: blocked at zero charges.");
+                Assert.AreEqual(ApplyExtraFailureReason.InsufficientCharges, result.FailureReason, $"{kind}: the 'earn via XP' block.");
+                Assert.AreEqual(0, result.RemainingCharges, $"{kind}: the unchanged count (0).");
+                Assert.AreEqual(0, h.Progression.GetChargeCount(chargeType), $"{kind}: count never goes negative (stays 0).");
+                Assert.AreEqual(savesBefore, h.Store.SaveCalls, $"{kind}: NO persist on a block (save-count 0).");
+                Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, $"{kind}: Credits never touched.");
+                Assert.AreEqual(EncounterState.Lured, h.Encounter.State, $"{kind}: the encounter stays live.");
+
+                // The modifier was NOT recorded: a subsequent Capture is NOT eased (the boost is not active).
+                if (kind == ExtraKind.StabilityBoost)
+                {
+                    const double StraddleDraw = 0.55; // would WIN if eased (0.60), MISS un-eased (0.50)
+                    h.Random.EnqueueDouble(StraddleDraw);
+                    CaptureResult cap = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+                    Assert.IsFalse(cap.Captured, "A blocked Stability Boost recorded NO modifier — the Capture is not eased.");
+                }
+            }
+        }
+
+        [Test]
+        public void Apply_extra_reads_a_mid_encounter_levelup_granted_charge_immediately()
+        {
+            // AC-4 (the load-bearing AC): a Capture that crosses a level threshold GRANTS a StabilityBoost charge
+            // mid-encounter (the harness rules grant 1 of each charge per level-up). The charge must be usable
+            // IMMEDIATELY in the SAME encounter — proving the apply path reads the LIVE charge count, not a
+            // snapshot cached at encounter start. Seed Xp=95, XpPerCapture=10 → 105 crosses threshold 100 (level
+            // 1) → +1 StabilityBoost. Then apply Stability Boost without ending/re-entering.
+            var seed = new SaveModel { Credits = 10, StabilityBoostCharges = 0, Xp = 95, Level = 0 };
+            var h = LuredHarness(seed);
+            Assert.AreEqual(0, h.Progression.GetChargeCount(ChargeType.StabilityBoost),
+                "Precondition: zero StabilityBoost charges at encounter start.");
+            h.Random.EnqueueDouble(WinDraw); // the Capture wins → grants XP → crosses the threshold
+
+            CaptureResult capture = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsTrue(capture.Captured, "Precondition: the Capture succeeded and granted XP.");
+            Assert.AreEqual(1, h.Save.Current.Level, "Precondition: crossed the first level threshold (100).");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost),
+                "Precondition: the level-up granted exactly one StabilityBoost charge mid-encounter.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "Still in the SAME live encounter (no EndEncounter).");
+
+            // The just-granted charge is spendable in the SAME encounter (the LIVE read, Decision B).
+            ApplyExtraResult applied = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+
+            Assert.IsTrue(applied.Success, "AC-4: the mid-encounter-granted charge is usable immediately.");
+            Assert.AreEqual(0, applied.RemainingCharges, "It consumed the just-granted charge.");
+            Assert.AreEqual(0, h.Store.Stored.StabilityBoostCharges, "...and the consume persisted.");
+        }
+
+        [Test]
+        public void Apply_extra_persist_fault_rolls_back_charge_and_modifier_and_raises_no_event()
+        {
+            // NFR-3: a persist fault on a successful apply restores the charge AND leaves the modifier NOT active
+            // (both slices roll back), returns a typed PersistenceFailed, and raises NO charges-changed signal
+            // (events only after a committed write). The encounter stays live.
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            h.Store.FailNextSave = true;
+
+            LogAssert.ignoreFailingMessages = true; // SaveService + EncounterService both log on the fault
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "A persist fault is a typed failure, not a faulted task.");
+            Assert.AreEqual(ApplyExtraFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost), "The charge is restored.");
+            Assert.AreEqual(1, result.RemainingCharges, "The result reports the restored prior count.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "Credits untouched regardless of the fault.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A failed apply keeps the encounter live.");
+
+            // The modifier rolled back: a subsequent Capture with a straddle draw is NOT eased (boost not active).
+            const double StraddleDraw = 0.55;
+            h.Random.EnqueueDouble(StraddleDraw);
+            CaptureResult cap = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsFalse(cap.Captured, "The rolled-back apply left NO active modifier — the Capture is not eased.");
+        }
+
+        [Test]
+        public void Apply_extra_recovery_swap_rolls_back_both_slices_and_reports_PersistenceFailed()
+        {
+            // Recovery-swap: a model swap mid-persist (the post-persist ReferenceEquals guard fails) reverts BOTH
+            // slices onto the CAPTURED ref and reports PersistenceFailed (never a phantom success). The OnSaveStored
+            // hook swaps SaveService.Current via RetryLoadAsync while the apply's save is in flight.
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 2 });
+            SaveModel captured = h.Save.Current; // the model the apply will capture + roll back onto
+            h.Store.OnSaveStored = () =>
+            {
+                // Race a recovery: republish a FRESH model (the fake clones on load) so Current != captured.
+                h.Save.RetryLoadAsync().GetAwaiter().GetResult();
+            };
+
+            LogAssert.ignoreFailingMessages = true;
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.AreNotSame(captured, h.Save.Current, "Precondition: recovery swapped in a fresh model.");
+            Assert.IsFalse(result.Success, "A mid-operation model swap must never report a phantom success.");
+            Assert.AreEqual(ApplyExtraFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(2, captured.StabilityBoostCharges, "The CAPTURED model's charge was restored (rollback fidelity).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A failed apply still returns to a live state.");
+        }
+
+        [Test]
+        public void Re_applying_the_same_extra_then_faulting_restores_the_second_charge_and_keeps_the_first_modifier()
+        {
+            // CR coverage gap (failure-path-cleanup-parity): re-applying the SAME extra in one encounter, where the
+            // SECOND apply faults. The first apply legitimately committed (charge 2→1, modifier active, persisted).
+            // The second apply consumes its charge (1→0) but `_activeExtras.Add` returns false (modifier already
+            // active from the first apply) → addedModifier=false → the rollback does NOT remove the modifier. This
+            // is CORRECT-BY-DESIGN: the end state must equal the post-first-apply state — charge 1, modifier active
+            // (the first apply paid for it). The second apply's OWN slices both roll back (its charge restored; it
+            // added no modifier of its own to remove). So there is no atomicity violation — the modifier's
+            // activeness was committed by the first apply, not stranded by the second.
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 2 });
+
+            ApplyExtraResult first = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            Assert.IsTrue(first.Success, "Precondition: the first apply commits (charge 2→1, modifier active).");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost), "First apply consumed one charge.");
+
+            h.Store.FailNextSave = true; // the SECOND apply's persist faults
+            LogAssert.ignoreFailingMessages = true;
+            ApplyExtraResult second = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(second.Success, "The second apply faulted — a typed failure.");
+            Assert.AreEqual(ApplyExtraFailureReason.PersistenceFailed, second.FailureReason);
+            // The SECOND apply's charge slice rolled back to the post-first-apply count (1), NOT to 0 or 2.
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost),
+                "The second apply's charge was restored to the post-first-apply count (1) — not double-spent, not over-refunded.");
+            Assert.AreEqual(1, h.Store.Stored.StabilityBoostCharges, "...and the persisted store matches (the first apply's commit stands).");
+
+            // The modifier the FIRST apply established is STILL active — a straddle-draw Capture is still eased.
+            const double StraddleDraw = 0.55; // miss un-eased (0.50), win eased (0.60)
+            h.Random.EnqueueDouble(StraddleDraw);
+            CaptureResult cap = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsTrue(cap.Captured,
+                "The first apply's modifier survives the second apply's fault (it was committed, not stranded) — the Capture is still eased.");
+        }
+
+        [Test]
+        public void An_eased_chance_is_clamped_strictly_below_certainty_yet_strictly_above_unEased()
+        {
+            // CR boundary pin (the 0.999 clamp): even if OQ-9 rebalancing pushed a base + boost to or past 1.0, the
+            // eased chance must clamp STRICTLY below certainty (never 1.0 — a boost is not a guarantee) AND remain
+            // STRICTLY greater than the un-eased chance. Today's consts never hit the ceiling; this guards the
+            // landmine that a future magnitude bump could otherwise let the eased chance reach/exceed 1.0 silently.
+            var h = CreateHarness(new SaveModel());
+
+            // The highest real un-eased chance in play is Strong Capture (0.85); eased it is 0.95 today. Assert the
+            // clamp invariant directly on every roll system so a rebalance that crosses 1.0 is caught.
+            foreach (bool strong in new[] { false, true })
+            {
+                double eased = h.CaptureSystem.SuccessChanceOf(strong, eased: true);
+                Assert.Less(eased, 1.0, $"Capture(strong:{strong}) eased chance must be < 1.0 (never a certainty).");
+                Assert.Greater(eased, h.CaptureSystem.SuccessChanceOf(strong, eased: false),
+                    $"Capture(strong:{strong}) eased must stay strictly above un-eased even at the clamp.");
+            }
+
+            double slayEased = h.SlaySystem.SuccessChanceOf(eased: true);
+            Assert.Less(slayEased, 1.0, "Slay eased chance must be < 1.0.");
+            Assert.Greater(slayEased, h.SlaySystem.SuccessChanceOf(eased: false), "Slay eased must stay strictly above un-eased.");
+
+            foreach (LureKind kind in new[] { LureKind.Basic, LureKind.Premium, LureKind.Multi })
+            {
+                double boosted = h.LureSystem.RareChanceOf(kind, nightveilActive: true);
+                Assert.Less(boosted, 1.0, $"{kind} Nightveil-boosted rare chance must be < 1.0 (never guaranteed).");
+                Assert.Greater(boosted, h.LureSystem.RareChanceOf(kind, nightveilActive: false),
+                    $"{kind} boosted rare chance must stay strictly above un-boosted even at the clamp.");
+            }
+        }
+
+        [Test]
+        public void Apply_extra_out_of_a_live_encounter_is_a_typed_NotSettled_failure_that_persists_nothing()
+        {
+            // Settles the 4.1 out-of-sequence deferral for the extras path: an apply with no live encounter (Idle)
+            // is NotSettled — NOT the misleading inherited PersistenceFailed+0 — and nothing mutates/persists.
+            var h = CreateHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 }); // Idle (no Lure)
+            int savesBefore = h.Store.SaveCalls;
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("no live encounter"));
+            ApplyExtraResult result = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(ApplyExtraFailureReason.NotSettled, result.FailureReason, "Out-of-sequence apply has a distinct reason.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing persisted.");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StabilityBoost), "No charge consumed.");
+            Assert.AreEqual(10, h.Save.Current.Credits, "No Credits touched.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "State unchanged.");
+        }
+
+        [Test]
+        public void Apply_extra_with_an_undefined_kind_throws_a_programmer_error_before_the_write()
+        {
+            // Programmer-error contract: an undefined ExtraKind throws ArgumentOutOfRangeException UP FRONT (the
+            // ExtrasSystem mapping), before touching the state machine. (StrongCapture is structurally excluded —
+            // it has no ExtraKind member — so no runtime guard for it is needed; this pins the bad-cast case.)
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 });
+            int savesBefore = h.Store.SaveCalls;
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => h.Encounter.TryApplyExtraAsync((ExtraKind)999).GetAwaiter().GetResult());
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing persisted on the bad-enum throw.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The state machine was not touched (still Lured).");
+        }
+
+        [Test]
+        public void EndEncounter_clears_the_active_extra_modifiers()
+        {
+            // Per-encounter (the _scannedThisEncounter.Clear() precedent): an extra applied in one encounter does
+            // NOT carry to the next. Apply Stability Boost, EndEncounter, begin a fresh encounter → the boost is
+            // NOT active (a Capture with a straddle draw misses, un-eased).
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1 });
+            ApplyExtraResult applied = h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            Assert.IsTrue(applied.Success, "Precondition: the boost applied this encounter.");
+
+            h.Encounter.EndEncounter();
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State);
+
+            // A fresh encounter (a new Lure). The shared FakeRandom queue is empty, so enqueue the Lure's draws
+            // then a straddle draw for the Capture.
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueDouble(0.99).EnqueueNext(0); // common Lure roll → mon01
+            LureResult lure = h.Encounter.TryLureAsync(LureKind.Basic).GetAwaiter().GetResult();
+            Assert.IsTrue(lure.Success, "Precondition: the fresh encounter settled a Monster.");
+
+            const double StraddleDraw = 0.55; // misses un-eased (0.50), would win eased (0.60)
+            h.Random.EnqueueDouble(StraddleDraw);
+            CaptureResult cap = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.IsFalse(cap.Captured, "EndEncounter cleared the active extras — the new encounter's Capture is NOT eased.");
+        }
+
+        [Test]
+        public void Apply_extra_records_no_codex_discovery()
+        {
+            // Anti-tautology / structural pin: an extra is NOT a discovery (defends against a copy-paste from
+            // CommitActionAsync/CommitCaptureAsync that left a StageDiscovery in). DiscoveredCount unchanged,
+            // OnMonsterDiscovered fired ZERO times.
+            var h = LuredHarness(new SaveModel { Credits = 10, StabilityBoostCharges = 1, NightveilFilterCharges = 1 });
+            int discoveredBefore = h.Codex.DiscoveredCount;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+
+            h.Encounter.TryApplyExtraAsync(ExtraKind.StabilityBoost).GetAwaiter().GetResult();
+            h.Encounter.TryApplyExtraAsync(ExtraKind.NightveilFilter).GetAwaiter().GetResult();
+
+            Assert.AreEqual(discoveredBefore, h.Codex.DiscoveredCount, "An extra does NOT discover a Monster (X/67 unchanged).");
+            Assert.AreEqual(0, discoveryEvents, "An extra raises NO discovery event.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No Codex key created by an extra.");
+        }
     }
 }

@@ -50,6 +50,12 @@ namespace Veilwalkers.Encounter
         /// <summary>Premium Lure rare-tier roll probability — STRICTLY greater than <see cref="BasicRareChance"/> (AC-2, provisional OQ-9).</summary>
         public const double PremiumRareChance = 0.50;
 
+        // Story 4.6 (FR-10) — the Nightveil Filter "small rarity boost" added to the rare-tier gate for the
+        // remainder of an encounter in which a NightveilFilter charge was applied (AC-2). The MAGNITUDE lives on
+        // ExtrasSystem (the single extras-tunables home, alongside StabilityBoostEase — CR patch). Clamped < 1.0
+        // so a rare is never guaranteed (that affordance is the $9.99 "Guaranteed-Rare Lure" pack, not a Nightveil
+        // charge). The AC pins the BEHAVIOR — a boosted rare chance STRICTLY greater than un-boosted — NOT the magnitude.
+
         private readonly EconomyConfig _config;
         private readonly MonsterDatabase _database;
         private readonly IRandom _random;
@@ -85,24 +91,56 @@ namespace Veilwalkers.Encounter
 
         /// <summary>The rare-tier roll probability for <paramref name="kind"/> (AC-2). Multi rolls each
         /// monster at the Basic chance.</summary>
-        public double RareChanceOf(LureKind kind) =>
-            kind == LureKind.Premium ? PremiumRareChance : BasicRareChance;
+        public double RareChanceOf(LureKind kind) => RareChanceOf(kind, nightveilActive: false);
+
+        /// <summary>
+        /// The rare-tier roll probability for <paramref name="kind"/>, optionally BOOSTED by an active Nightveil
+        /// Filter (Story 4.6, AC-2). <paramref name="nightveilActive"/> = true adds <see cref="ExtrasSystem.NightveilRarityBoost"/>
+        /// (clamped just below 1.0 so a rare is never guaranteed), so the boosted chance is STRICTLY greater than
+        /// the un-boosted one (the mutation-testable AC). The un-boosted values are byte-identical to pre-4.6.
+        /// </summary>
+        public double RareChanceOf(LureKind kind, bool nightveilActive)
+        {
+            double chance = kind == LureKind.Premium ? PremiumRareChance : BasicRareChance;
+            if (!nightveilActive)
+            {
+                return chance;
+            }
+
+            // Strictly greater than the un-boosted chance, but capped just under certainty (never 1.0).
+            return Math.Min(chance + ExtrasSystem.NightveilRarityBoost, 0.999);
+        }
 
         /// <summary>
         /// Roll ONE Monster for <paramref name="kind"/> (Basic/Premium): a rare-tier gate at
-        /// <see cref="RareChanceOf"/>, then a uniform pick from the matching populated subset. Returns the
-        /// chosen Monster id. Throws if the database is empty (nothing to Lure — content/programmer error).
+        /// <see cref="RareChanceOf(LureKind)"/>, then a uniform pick from the matching populated subset. Returns
+        /// the chosen Monster id. Throws if the database is empty (nothing to Lure — content/programmer error).
         /// </summary>
-        public string RollMonster(LureKind kind) => RollOne(RareChanceOf(kind));
+        public string RollMonster(LureKind kind) => RollMonster(kind, nightveilActive: false);
+
+        /// <summary>
+        /// Roll ONE Monster for <paramref name="kind"/>, optionally BOOSTED by an active Nightveil Filter (Story
+        /// 4.6, AC-2): the rare-tier gate uses the strictly-higher boosted chance, so the SAME draw that yields a
+        /// common pick un-boosted may yield a rare pick boosted. The un-boosted path is byte-identical to pre-4.6.
+        /// </summary>
+        public string RollMonster(LureKind kind, bool nightveilActive) =>
+            RollOne(RareChanceOf(kind, nightveilActive));
 
         /// <summary>
         /// Roll the TWO Monsters of a Multi-Lure (AC-3) — each INDEPENDENTLY (two separate draws), so the
         /// pair is not a single duplicated roll. Returns both ids (may be the same Monster by chance — a
         /// Multi can legitimately surface two of a kind from the small MVP roster).
         /// </summary>
-        public (string first, string second) RollMultiMonsters()
+        public (string first, string second) RollMultiMonsters() => RollMultiMonsters(nightveilActive: false);
+
+        /// <summary>
+        /// Roll the two Multi-Lure Monsters, optionally BOOSTED by an active Nightveil Filter (Story 4.6, AC-2):
+        /// each independent draw uses the strictly-higher boosted rare chance. The un-boosted path is
+        /// byte-identical to pre-4.6.
+        /// </summary>
+        public (string first, string second) RollMultiMonsters(bool nightveilActive)
         {
-            double chance = RareChanceOf(LureKind.Multi);
+            double chance = RareChanceOf(LureKind.Multi, nightveilActive);
             return (RollOne(chance), RollOne(chance));
         }
 

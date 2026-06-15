@@ -98,6 +98,18 @@ namespace Veilwalkers.Encounter
         // only (the 4.1 `_activeAnchors` precedent).
         private readonly HashSet<string> _scannedThisEncounter = new HashSet<string>();
 
+        // The extras applied THIS encounter (Story 4.6, FR-10 — Decision C'). The in-memory per-encounter
+        // MODIFIER record: an applied Stability Boost / Nightveil Filter records its ExtraKind here (the
+        // `_scannedThisEncounter` precedent — set BEFORE the persist, reverted on a fault, cleared on
+        // EndEncounter). The existing rolls consult it for the ease/rarity bonus: Stability Boost eases the
+        // Capture and Slay success ROLLS (AC-1) — Scan has NO success roll to ease (it is a free, deterministic
+        // flag-record, CommitScanAsync), so "Scan/Capture/Slay ease" in AC-1 means Capture+Slay in practice;
+        // Nightveil raises the Lure rarity roll (AC-2) + flags the atmospheric visual filter (the render-layer
+        // flag the Epic-6 VFX reads). Per-encounter: an extra's effect does NOT carry to the next encounter (AC-1/AC-2 "for the
+        // remainder of the current encounter"). The persisted disk round-trip (across a Shop navigation) is
+        // Story 5.4 — the same deferral as the scan-progress snapshot.
+        private readonly HashSet<ExtraKind> _activeExtras = new HashSet<ExtraKind>();
+
         /// <summary>
         /// Raised when a composed action cannot afford its credit spend (AR-11): the service NEVER opens the
         /// Shop or calls Billing/UI — App/UI decides the top-up prompt. Surfaced at the encounter altitude so
@@ -178,6 +190,7 @@ namespace Veilwalkers.Encounter
             _activeSpawnHandles = Array.Empty<int>();
             _activeAnchors = Array.Empty<AnchorToken>();
             _scannedThisEncounter.Clear(); // per-encounter scan progress does not carry to the next encounter
+            _activeExtras.Clear(); // per-encounter extra modifiers (Stability Boost / Nightveil) do not carry over (4.6)
             return _stateMachine.Reset();
         }
 
@@ -227,17 +240,24 @@ namespace Veilwalkers.Encounter
             int wanted = _lureSystem.MonsterCountOf(kind);
 
             // (1) Roll the monster id(s) — pure decision, no side effects (LureSystem). Multi rolls two
-            // INDEPENDENT monsters; Basic/Premium roll one.
+            // INDEPENDENT monsters; Basic/Premium roll one. Story 4.6 (AC-2): an active Nightveil Filter raises
+            // the rare-tier chance — pass the in-encounter modifier state INTO the roll (the system stays pure;
+            // it does not back-reference the service). NOTE: a Lure starts from Idle (one Lure per encounter), so
+            // `_activeExtras` is empty here unless a prior Lure's encounter applied Nightveil AND was not ended —
+            // but a re-Lure requires Idle, and EndEncounter clears `_activeExtras`. The boost therefore applies to
+            // Lures rolled within the SAME live encounter once the deferred re-Lure / queued-spawn flows land;
+            // the seam is wired now so the rarity boost reads from the same source as Capture/Slay ease.
+            bool nightveilActive = _activeExtras.Contains(ExtraKind.NightveilFilter);
             var monsterIds = new List<string>(wanted);
             if (kind == LureKind.Multi)
             {
-                (string first, string second) = _lureSystem.RollMultiMonsters();
+                (string first, string second) = _lureSystem.RollMultiMonsters(nightveilActive);
                 monsterIds.Add(first);
                 monsterIds.Add(second);
             }
             else
             {
-                monsterIds.Add(_lureSystem.RollMonster(kind));
+                monsterIds.Add(_lureSystem.RollMonster(kind, nightveilActive));
             }
 
             // (2) Secure the required placements BEFORE the spend (Decision E). For Multi this is two; if the
@@ -541,7 +561,11 @@ namespace Veilwalkers.Encounter
 
             // Roll the success OUTSIDE the locked write (the LureSystem precedent: the system rolls, the service
             // composes the persist with the known outcome). One draw on IRandom against the variant's chance.
-            bool rollSucceeded = _captureSystem.RollCapture(strong);
+            // Story 4.6 (AC-1): an active Stability Boost EASES the roll (a strictly-higher success chance) for
+            // the remainder of THIS encounter — pass the in-encounter modifier state INTO the roll (the system
+            // stays pure; it does not back-reference the service).
+            bool eased = _activeExtras.Contains(ExtraKind.StabilityBoost);
+            bool rollSucceeded = _captureSystem.RollCapture(strong, eased);
 
             CaptureResult result;
             try
@@ -817,8 +841,11 @@ namespace Veilwalkers.Encounter
             }
 
             // Roll the success OUTSIDE the locked write (the CaptureSystem/LureSystem precedent: the system
-            // rolls, the service composes the persist with the known outcome). One draw on IRandom.
-            bool rollSucceeded = _slaySystem.RollSlay();
+            // rolls, the service composes the persist with the known outcome). One draw on IRandom. Story 4.6
+            // (AC-1): an active Stability Boost EASES the roll (a strictly-higher success chance) for the
+            // remainder of THIS encounter — the in-encounter modifier state is passed INTO the roll.
+            bool eased = _activeExtras.Contains(ExtraKind.StabilityBoost);
+            bool rollSucceeded = _slaySystem.RollSlay(eased);
 
             SlayResult result;
             try
@@ -1003,7 +1030,268 @@ namespace Veilwalkers.Encounter
             return result;
         }
 
-        // ---- AC-2: the atomic multi-delta write primitive (extras 4.6 compose this) ----
+        // ---- FR-10 (Story 4.6): apply an encounter extra — Stability Boost / Nightveil Filter ----
+
+        /// <summary>
+        /// Apply an encounter extra (Story 4.6, FR-10): Stability Boost (raises Scan/Capture/Slay ease — AC-1) or
+        /// Nightveil Filter (flags the atmospheric visual filter + raises Lure rarity — AC-2) for the REMAINDER
+        /// of the current encounter. Consumes EXACTLY one charge of the extra's type (never Credits; blocked at
+        /// zero charges; never negative) and records the in-encounter modifier, committing the charge decrement
+        /// in ONE atomic save (AR-8). Returns a typed <see cref="ApplyExtraResult"/> — never throws for an
+        /// expected outcome (a zero-charge block, an out-of-sequence call, a persist fault are all reported on
+        /// the result, AR-7); throws only for an UNDEFINED <paramref name="kind"/> (programmer error — note that
+        /// <c>StrongCapture</c> has no <see cref="ExtraKind"/> member, so it cannot be passed here at all).
+        /// <para>
+        /// <b>The SIXTH atomic-write sibling (charge-only, no discovery).</b> Unlike Capture (charge + codex + XP)
+        /// the extras consume a charge and discover NOTHING — so they do NOT compose <see cref="CommitActionAsync"/>
+        /// (which always stages a discovery). The composed write (<see cref="CommitApplyExtraAsync"/>) reuses the
+        /// <see cref="CommitCaptureAsync"/> charge-consume slice + the <see cref="CommitScanAsync"/> in-encounter
+        /// record. Extras spend a CHARGE, never Credits — so there is NO <see cref="OnInsufficientCredits"/> raise
+        /// (unlike Slay/Lure); the zero-charge block is surfaced via the typed result ONLY (Epic 6 binds the
+        /// "earn via XP" hint to <see cref="ApplyExtraFailureReason.InsufficientCharges"/>).
+        /// </para>
+        /// <para>
+        /// <b>AC-4 (mid-encounter grant usable immediately).</b> The charge count is read LIVE from the model
+        /// inside the locked write (the <see cref="CommitCaptureAsync"/> posture) — it is NEVER snapshotted at
+        /// encounter start, so a charge granted by a mid-encounter level-up (a Capture/Slay XP grant that crosses
+        /// a threshold) is immediately spendable without ending/re-entering the encounter.
+        /// </para>
+        /// <para>
+        /// Drives the in-encounter loop (Lured → Acting → Resolving → Lured) — modelled on
+        /// <see cref="TryScanAsync"/>/<see cref="TrySlayAsync"/> (it calls <c>BeginAction</c> itself then
+        /// <c>BeginResolve</c>), NOT the inherited <see cref="RunActionAsync"/> (which returns the misleading
+        /// <c>PersistenceFailed</c>+0 out of sequence). A zero-charge block is a CLEAN resolution (it
+        /// <c>CompleteResolve</c>s back to Lured); only a true persist fault <c>FailResolve</c>s.
+        /// </para>
+        /// </summary>
+        public async Task<ApplyExtraResult> TryApplyExtraAsync(ExtraKind kind)
+        {
+            // Map the extra to its charge type UP FRONT (programmer-error contract — an undefined ExtraKind
+            // throws ArgumentOutOfRangeException via ExtrasSystem) BEFORE touching the state machine, so a bad
+            // enum never leaves the machine stranded mid-resolve (the TryCaptureAsync/TrySlayAsync up-front
+            // validation precedent). StrongCapture cannot reach here — it has no ExtraKind member.
+            ChargeType chargeType = ExtrasSystem.ChargeTypeOf(kind);
+
+            // The state machine must be able to enter Acting — a live encounter with a settled Monster (AC-1).
+            // An apply out of sequence (no Lured encounter) is a typed NotSettled failure, NOT the misleading
+            // inherited PersistenceFailed+0 (settles the 4.1 out-of-sequence deferral for the extras path).
+            if (!_stateMachine.BeginAction())
+            {
+                GameLog.Warn(
+                    $"EncounterService.TryApplyExtraAsync ignored — no live encounter to apply {kind} to (state: {_stateMachine.State}).");
+                return ApplyExtraResult.Failed(ApplyExtraFailureReason.NotSettled, kind, ChargeCount(chargeType));
+            }
+
+            // Lured → Acting succeeded; open the commit window (Acting → Resolving), run the charge-only write,
+            // and settle the resolve. A zero-charge BLOCK still CompleteResolves (a resolved block returns to
+            // Lured); only a true persist fault FailResolves. Mirrors TryScanAsync/TrySlayAsync sequencing.
+            if (!_stateMachine.BeginResolve())
+            {
+                // Should be unreachable (we just entered Acting). Reconcile rather than stranding the machine in
+                // Acting (a stuck-in-Acting encounter is bricked) — EndEncounter resets to Idle + releases the
+                // Lure's pooled spawns (the [[failure-path-cleanup-parity]] discipline, the TrySlayAsync precedent).
+                GameLog.Error(
+                    "EncounterService.TryApplyExtraAsync: could not begin resolve after entering Acting (unexpected) — " +
+                    "ending the encounter to avoid stranding it in Acting.");
+                EndEncounter();
+                return ApplyExtraResult.Failed(ApplyExtraFailureReason.NotSettled, kind, ChargeCount(chargeType));
+            }
+
+            ApplyExtraResult result;
+            try
+            {
+                result = await CommitApplyExtraAsync(kind, chargeType).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // The composed write throws only for a programmer/system error (an unloaded/corrupt model —
+                // RequireModel). We are mid-resolve (BeginResolve succeeded above); rethrowing without settling
+                // would strand the machine in Resolving (a bricked encounter). Reconcile via EndEncounter (Resets
+                // to Idle + releases the Lure's pooled spawns) BEFORE propagating — the [[failure-path-cleanup-parity]]
+                // discipline, the TrySlayAsync precedent. The caller still sees the exception (a programmer error).
+                EndEncounter();
+                throw;
+            }
+
+            // A persist fault (the ONLY false-Success outcome that reached the write) FailResolves; everything
+            // else — a clean apply OR a zero-charge block — is a clean resolution back to Lured.
+            if (result.Success || result.FailureReason != ApplyExtraFailureReason.PersistenceFailed)
+            {
+                _stateMachine.CompleteResolve();
+            }
+            else
+            {
+                _stateMachine.FailResolve();
+            }
+
+            return result;
+        }
+
+        /// <summary>The current charge count of <paramref name="type"/>, or 0 if the model is not loaded
+        /// (defensive — used only to populate a typed failure's RemainingCharges on an early-out path).</summary>
+        private int ChargeCount(ChargeType type)
+        {
+            SaveModel model = _saveService.Current;
+            return model == null ? 0 : ChargeInventory.GetCount(model, type);
+        }
+
+        /// <summary>
+        /// The atomic APPLY-EXTRA composed write (AR-8) — the SIXTH composed-write sibling (after the 4.1 charge
+        /// <see cref="CommitActionAsync"/>, the 4.2 credit <see cref="CommitLureSpendAsync"/>, the 4.3 free
+        /// <see cref="CommitScanAsync"/>, the 4.4 roll-aware <see cref="CommitCaptureAsync"/>, the 4.5 roll-gated
+        /// <see cref="CommitSlayAsync"/>). Its delta — ONE charge consumed (no Credits, no codex, no XP) PLUS an
+        /// in-memory per-encounter modifier (<see cref="_activeExtras"/>) — matches no other sibling, so it gets
+        /// its own write. Same pipeline shape: acquire the SHARED <see cref="SaveMutationLock"/> once → capture
+        /// the model ref once → mutate the slices in memory → ONE <c>SaveAsync</c> → recovery-swap guard →
+        /// whole-mutation rollback on any fault → release → the charges-changed event after release.
+        /// <para>
+        /// The outcome shapes:
+        /// <list type="bullet">
+        /// <item><b>zero charges</b> → typed <see cref="ApplyExtraFailureReason.InsufficientCharges"/>, no charge
+        ///   decrement, no modifier record, no persist (save-count 0). The "earn via XP" block (AC-3); the count
+        ///   never goes negative (the only decrement is gated by this check).</item>
+        /// <item><b>≥ 1 charge</b> → consume one charge + record the in-encounter modifier → ONE persist
+        ///   (save-count 1) of the charge decrement, the modifier active for the rest of the encounter.</item>
+        /// </list>
+        /// On a fault BOTH slices are reverted onto the captured ref: the in-encounter modifier
+        /// (<c>_activeExtras.Remove(kind)</c> if THIS call added it — a single <c>addedModifier</c> local for both
+        /// fault branches, the <see cref="CommitScanAsync"/> <c>addedToEncounter</c> precedent) AND the charge
+        /// (<c>ChargeInventory.SetCount(..., priorChargeCount)</c> if consumed). The charge slice (persisted
+        /// <c>SaveModel</c> field) and the modifier slice (in-memory <see cref="_activeExtras"/>) touch DISJOINT
+        /// state, so there is NO load-bearing revert ordering (unlike Capture's Decision F') — but revert BOTH.
+        /// The charges-changed event fires AFTER release ONLY on a committed success; an extra stages NO XP, so
+        /// there is no <c>ChargesChangedFor</c> duplicate-event guard (unlike Capture's Decision F').
+        /// </para>
+        /// </summary>
+        private async Task<ApplyExtraResult> CommitApplyExtraAsync(ExtraKind kind, ChargeType chargeType)
+        {
+            ApplyExtraResult result;
+            bool committed = false;
+            bool chargeConsumed = false;
+            int newChargeCount = 0;
+            // Whether THIS call added the modifier to the encounter set — the single source of truth for the
+            // rollback (both the swap branch AND the catch revert exactly what this call mutated). Declared out
+            // here so BOTH fault branches use the SAME variable, not two equivalent expressions (the CommitScanAsync
+            // `addedToEncounter` precedent — [[failure-path-cleanup-parity]]: revert provably mirrors the add).
+            bool addedModifier = false;
+
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Capture the model reference ONCE — a recovery swap mid-persist must never make the rollback
+                // write onto a NEW model (the inherited rollback-fidelity discipline).
+                SaveModel model = RequireModel();
+
+                // AC-4: read the charge count LIVE inside the locked write (NEVER a snapshot cached at encounter
+                // start) — this is what makes a mid-encounter level-up grant immediately spendable.
+                int priorChargeCount = ChargeInventory.GetCount(model, chargeType);
+
+                if (priorChargeCount == 0)
+                {
+                    // AC-3 zero-charge block: the "earn via XP" failure. No charge decrement, no modifier record,
+                    // no persist (save-count 0). The only decrement below is guarded by this check, so the count
+                    // can never go negative. Surfaced via the typed result only (no Credits → no OnInsufficientCredits).
+                    result = ApplyExtraResult.Failed(ApplyExtraFailureReason.InsufficientCharges, kind, priorChargeCount);
+                }
+                else
+                {
+                    // Both slices change → stage them, then ONE persist.
+                    // (a) charge slice: consume one charge. Set chargeConsumed BEFORE the SetCount so even if
+                    // SetCount itself threw (it should not — the count is guarded >= 0), the catch still reverts
+                    // the charge: the flag controlling rollback must never lag the mutation it guards (the
+                    // rollback-fidelity discipline, the CommitCaptureAsync charge-flag precedent).
+                    chargeConsumed = true;
+                    ChargeInventory.SetCount(model, chargeType, priorChargeCount - 1);
+
+                    // (b) modifier slice: record the in-encounter modifier BEFORE the persist so a swap/throw
+                    // rolls it back alongside the charge (the CommitScanAsync `_scannedThisEncounter.Add` precedent).
+                    // Add returns false if the modifier was already active (a re-apply) — addedModifier then stays
+                    // false so the rollback does not remove a modifier a PRIOR apply established.
+                    addedModifier = _activeExtras.Add(kind);
+
+                    try
+                    {
+                        // ONE persist for the charge slice (AR-8: never two persists per action). The modifier
+                        // slice is in-memory only this story (the disk snapshot is Story 5.4).
+                        await _saveService.SaveAsync().ConfigureAwait(false);
+
+                        if (ReferenceEquals(_saveService.Current, model))
+                        {
+                            committed = true;
+                            // Use the KNOWN computed post-consume value (priorChargeCount - 1), not a re-read via
+                            // GetCount — there is no XP stage here to touch the charge after SetCount (Decision C',
+                            // disjoint slices), so the value is deterministic, and using it matches the failure
+                            // branches' "never recompute" discipline (they restore priorChargeCount directly). CR patch.
+                            newChargeCount = priorChargeCount - 1;
+                            result = ApplyExtraResult.Succeeded(kind, newChargeCount);
+                        }
+                        else
+                        {
+                            // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at, NOT
+                            // this apply. Revert BOTH slices onto the captured ref (disjoint state — no ordering).
+                            if (addedModifier)
+                            {
+                                _activeExtras.Remove(kind);
+                            }
+
+                            if (chargeConsumed)
+                            {
+                                ChargeInventory.SetCount(model, chargeType, priorChargeCount);
+                            }
+
+                            GameLog.Error(
+                                $"EncounterService: applying {kind} rolled back — the save model was swapped " +
+                                "mid-operation (recovery raced a mutation).");
+                            result = ApplyExtraResult.Failed(ApplyExtraFailureReason.PersistenceFailed, kind, priorChargeCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Persist fault: revert BOTH slices onto the captured ref — never recompute. Use the SAME
+                        // addedModifier/chargeConsumed locals as the swap branch so the revert provably mirrors the
+                        // mutation (the charge and the modifier commit together or not at all — the extras-specific
+                        // [[failure-path-cleanup-parity]] bug class: never a modifier-active-but-charge-restored,
+                        // never a charge-spent-but-modifier-not-recorded).
+                        if (addedModifier)
+                        {
+                            _activeExtras.Remove(kind);
+                        }
+
+                        if (chargeConsumed)
+                        {
+                            ChargeInventory.SetCount(model, chargeType, priorChargeCount);
+                        }
+
+                        GameLog.Error(
+                            $"EncounterService: applying {kind} rolled back — persist failed. {ex.Message}");
+                        result = ApplyExtraResult.Failed(ApplyExtraFailureReason.PersistenceFailed, kind, priorChargeCount);
+                    }
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+
+            // Events AFTER the lock releases, ONLY on a committed apply (a block commits no events). An extra
+            // consumes a charge directly and stages NO XP, so there is no ChargesChangedFor duplicate-event guard
+            // (unlike Capture's Decision F') — this explicit raise is the only charges-changed signal.
+            if (committed)
+            {
+                RaiseChargesChanged(chargeType, newChargeCount);
+            }
+
+            return result;
+        }
+
+        // ---- AC-2: the atomic multi-delta write primitive (the generic charge+discovery action) ----
+        // NOTE (settled by Story 4.6): the two NON-capture extras (Stability Boost, Nightveil Filter) do NOT
+        // compose this primitive. CommitActionAsync ALWAYS stages a Codex StageDiscovery, but an extra consumes a
+        // charge and discovers NOTHING (there is no "no-discovery" DiscoverySource, and an extra must never
+        // discover a Monster as a side effect of applying a Boost). So the extras get their OWN composed write
+        // (CommitApplyExtraAsync — charge-only, no codex/XP, plus an in-encounter modifier). Strong Capture's
+        // charge already flows through the 4.4 Capture path, so no 4.6 caller composes RunActionAsync; it remains
+        // the generic charge+discovery primitive (Slay 4.5 retired its use too — see CommitSlayAsync).
 
         /// <summary>
         /// Run a composed action as the encounter state machine expects (Acting → Resolving → Acting): begin

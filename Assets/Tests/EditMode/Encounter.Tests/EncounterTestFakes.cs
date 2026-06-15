@@ -44,6 +44,18 @@ namespace Veilwalkers.Encounter.Tests
         public SaveModel Stored;
         public bool FailNextSave;
 
+        /// <summary>
+        /// A one-shot hook fired INSIDE <see cref="SaveAsync"/> (after the snapshot is stored, before the task
+        /// completes) — the recovery-swap test seam. A test sets this to <c>save.RetryLoadAsync()...</c> so that,
+        /// mid-persist, <see cref="SaveService.Current"/> is swapped to a FRESH model (the fake clones on load):
+        /// the composed write's post-persist <c>ReferenceEquals(Current, capturedModel)</c> guard then fails, and
+        /// the write must roll back onto the captured ref + report <c>PersistenceFailed</c> (never a phantom
+        /// success). Mirrors the Economy <c>ChargePipelineTests</c> <c>SaveGate</c>+<c>RetryLoadAsync</c> swap,
+        /// but synchronous (the Encounter tests drive the service synchronously via <c>GetAwaiter().GetResult()</c>).
+        /// Cleared after firing so only ONE save is swapped.
+        /// </summary>
+        public Action OnSaveStored;
+
         public int SaveCalls => Volatile.Read(ref _saveCalls);
 
         public Task<SaveModel> LoadAsync()
@@ -67,6 +79,17 @@ namespace Veilwalkers.Encounter.Tests
             }
 
             Stored = Clone(model);
+
+            // The recovery-swap seam: fire the one-shot hook AFTER the snapshot is durably stored but BEFORE the
+            // save task completes, so a test can swap SaveService.Current out from under the in-flight write (the
+            // SaveAsync above wrote the captured model's snapshot, but Current now points at a different model).
+            Action hook = OnSaveStored;
+            if (hook != null)
+            {
+                OnSaveStored = null; // one-shot: only this save is swapped
+                hook();
+            }
+
             return Task.CompletedTask;
         }
 
