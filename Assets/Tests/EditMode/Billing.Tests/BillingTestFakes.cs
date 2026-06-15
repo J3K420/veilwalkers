@@ -1,12 +1,24 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Veilwalkers.Billing;
+using Veilwalkers.Core;
 using Veilwalkers.Persistence;
 
 namespace Veilwalkers.Billing.Tests
 {
+    /// <summary>
+    /// A deterministic <see cref="IClock"/> for the Billing tests — the reconciler stamps
+    /// <c>PendingPurchaseRecord.IsoTimestampUtc</c> from it (Story 5.2). A fixed, far-from-DST UTC instant so
+    /// the timestamp is stable; tests assert ledger STATE, not the timestamp, so the exact value is inert.
+    /// </summary>
+    internal sealed class FakeClock : IClock
+    {
+        public DateTime UtcNow { get; set; } = new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+    }
+
     /// <summary>
     /// A scriptable <see cref="IStoreAdapter"/> test double (the <c>FakeArAnchorProvider</c> equivalent):
     /// the next <see cref="PurchaseAsync"/> returns whatever <see cref="NextResult"/> is set to, and
@@ -16,6 +28,7 @@ namespace Veilwalkers.Billing.Tests
     internal sealed class FakeStoreAdapter : IStoreAdapter
     {
         private int _purchaseCalls;
+        private int _acknowledgeCalls;
 
         /// <summary>The result the next <see cref="PurchaseAsync"/> returns. Defaults to a completed
         /// purchase so the happy-path test only sets the order id; failure tests override it.</summary>
@@ -27,7 +40,17 @@ namespace Veilwalkers.Billing.Tests
         /// <summary>The last pack id passed to <see cref="PurchaseAsync"/> (for routing assertions).</summary>
         public string LastPackId;
 
+        /// <summary>What <see cref="AcknowledgeAsync"/> returns (Story 5.2). Defaults to a successful
+        /// acknowledge; the ack-fails-then-retries pin sets it false then true.</summary>
+        public bool NextAcknowledgeResult = true;
+
+        /// <summary>Every order id <see cref="AcknowledgeAsync"/> was called with, in order (Story 5.2) —
+        /// pins "acknowledge once per credited record, after the grant".</summary>
+        public readonly List<string> AcknowledgedOrderIds = new List<string>();
+
         public int PurchaseCalls => Volatile.Read(ref _purchaseCalls);
+
+        public int AcknowledgeCalls => Volatile.Read(ref _acknowledgeCalls);
 
         public Task<StorePurchaseResult> PurchaseAsync(string packId)
         {
@@ -39,6 +62,13 @@ namespace Veilwalkers.Billing.Tests
         public Task<IReadOnlyDictionary<string, string>> FetchLocalizedPricesAsync(IEnumerable<string> packIds)
         {
             return Task.FromResult(LocalizedPrices);
+        }
+
+        public Task<bool> AcknowledgeAsync(string playOrderId)
+        {
+            Interlocked.Increment(ref _acknowledgeCalls);
+            AcknowledgedOrderIds.Add(playOrderId);
+            return Task.FromResult(NextAcknowledgeResult);
         }
     }
 
@@ -110,6 +140,29 @@ namespace Veilwalkers.Billing.Tests
                     ? new Dictionary<string, CodexEntryData>()
                     : new Dictionary<string, CodexEntryData>(model.Codex),
             };
+
+            // Story 5.2: DEEP-copy PendingPurchases (a new list + a new record per element copying all four
+            // fields) so Stored.PendingPurchases never aliases the live list — otherwise the reconciler
+            // advancing a record to Granted would mutate the "stored" copy too and every exactly-once /
+            // ledger-state assertion would pass for the wrong reason ([[tautological-test-trap]]).
+            if (model.PendingPurchases != null)
+            {
+                foreach (PendingPurchaseRecord record in model.PendingPurchases)
+                {
+                    if (record == null)
+                    {
+                        continue;
+                    }
+
+                    copy.PendingPurchases.Add(new PendingPurchaseRecord
+                    {
+                        OrderId = record.OrderId,
+                        PackId = record.PackId,
+                        State = record.State,
+                        IsoTimestampUtc = record.IsoTimestampUtc,
+                    });
+                }
+            }
 
             return copy;
         }

@@ -35,9 +35,15 @@ namespace Veilwalkers.Billing.Tests
             var store = new FakeBillingProgressStore { Stored = new SaveModel { Credits = startingCredits } };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
-            var credits = new CreditService(save, new SaveMutationLock());
+            var mutationLock = new SaveMutationLock();
+            var credits = new CreditService(save, mutationLock);
             var adapter = new FakeStoreAdapter();
-            var billing = new BillingService(new CreditPackCatalog(), adapter, credits);
+            var catalog = new CreditPackCatalog();
+            // Story 5.2: BillingService now routes its single grant site through the PurchaseReconciler. The
+            // 5.1 pins below MUST stay green through the interposition — that is the proof the public surface
+            // is unchanged. The reconciler shares the same lock + real CreditService + catalog + adapter.
+            var reconciler = new PurchaseReconciler(save, mutationLock, credits, catalog, adapter, new FakeClock());
+            var billing = new BillingService(catalog, adapter, credits, reconciler);
 
             var rig = new Rig { Store = store, Adapter = adapter, Credits = credits, Billing = billing };
             billing.OnPurchaseCompleted += e => rig.Completed.Add(e);
@@ -54,7 +60,6 @@ namespace Veilwalkers.Billing.Tests
         {
             var rig = BuildRig(startingCredits: 10);
             rig.Adapter.NextResult = StorePurchaseResult.Succeeded(CreditPackCatalog.HunterPackId, "order-abc");
-            int savesBefore = rig.Store.SaveCalls;
 
             PurchaseResult result = Purchase(rig, CreditPackCatalog.HunterPackId);
 
@@ -64,8 +69,14 @@ namespace Veilwalkers.Billing.Tests
             Assert.AreEqual(180, result.NewBalance, "10 + 170.");
             Assert.AreEqual(180, rig.Credits.Balance, "The durable balance reflects the grant.");
 
-            // Exactly ONE persist (AR-8 / NFR-4 no double-grant).
-            Assert.AreEqual(1, rig.Store.SaveCalls - savesBefore, "Exactly one persist per purchase.");
+            // Exactly ONE grant — the balance increments by the pack total exactly once (AR-8 / NFR-4 no
+            // double-grant). Story 5.2: the happy path now persists FOUR times (pending-write → grant →
+            // Granted-state advance → clear), so the no-double-grant invariant is the BALANCE delta (granted
+            // once = +170), not the raw save-count. The exactly-once-grant pin proper lives in
+            // PurchaseReconcilerTests (a Granted record's re-pass grant save-count == 0).
+            Assert.AreEqual(170, rig.Credits.Balance - 10, "Granted the pack total exactly once (no double-grant).");
+            Assert.AreEqual(0, rig.Store.Stored.PendingPurchases.Count,
+                "The ledger is cleared after a fully-reconciled purchase (granted + acknowledged).");
 
             // OnPurchaseCompleted raised exactly once, with the right payload.
             Assert.AreEqual(1, rig.Completed.Count);
@@ -141,17 +152,24 @@ namespace Veilwalkers.Billing.Tests
         // ---------- AC-3: a grant-persist fault → typed GrantFailed, no event, balance net-unchanged ----------
 
         [Test]
-        public void Grant_persist_fault_returns_GrantFailed_with_no_event_and_balance_net_unchanged()
+        public void Persist_fault_on_the_purchase_path_returns_GrantFailed_with_no_event_and_balance_net_unchanged()
         {
+            // Story 5.2: BillingService routes a Purchased result through the reconciler, whose FIRST persist
+            // is the pending-ledger write. With FailNextSave armed, that write faults → RecordPendingAsync
+            // returns false → NOTHING is granted → GrantFailed (recoverable: the player re-attempts; the
+            // dedicated grant-fault-THEN-recovery scenario is pinned in PurchaseReconcilerTests). The contract
+            // 5.1 fixed still holds: a persist fault on the purchase path grants nothing, raises no event, and
+            // leaves the balance net-unchanged.
             var rig = BuildRig(startingCredits: 40);
             rig.Adapter.NextResult = StorePurchaseResult.Succeeded(CreditPackCatalog.StarterPackId, "order-x");
-            rig.Store.FailNextSave = true; // CreditService.GrantCreditsAsync rolls back + returns Result.Fail.
+            rig.Store.FailNextSave = true; // the pending-ledger write faults.
 
-            // The fault path emits three error logs, in synchronous order (the CreditPipelineTests precedent):
-            // the SaveService save failure, the CreditService rollback, and the BillingService paid-but-not-granted
-            // alarm. Expect them so the EditMode runner does not treat the (intended) errors as a failure.
+            // The fault path emits three ERROR logs: the pending-write SaveService failure, the reconciler's
+            // "failed to record pending purchase" (the write rolled back, so the grant will not proceed), and
+            // the BillingService paid-but-not-granted-yet alarm. Expect all three so the EditMode runner does
+            // not treat the (intended) errors as a failure.
             LogAssert.Expect(LogType.Error, new Regex("SaveService: save failed"));
-            LogAssert.Expect(LogType.Error, new Regex("CreditService: grant of 50 rolled back"));
+            LogAssert.Expect(LogType.Error, new Regex("PurchaseReconciler: failed to record pending purchase"));
             LogAssert.Expect(LogType.Error, new Regex("BillingService: PAID purchase of 'credits_starter'"));
 
             PurchaseResult result = Purchase(rig, CreditPackCatalog.StarterPackId);
@@ -159,7 +177,7 @@ namespace Veilwalkers.Billing.Tests
             Assert.IsFalse(result.Success);
             Assert.AreEqual(PurchaseFailureReason.GrantFailed, result.FailureReason,
                 "Store charged but the local grant did not save — the 5.2 reconciliation seam.");
-            Assert.AreEqual(40, rig.Credits.Balance, "The grant rolled back; balance is net-unchanged.");
+            Assert.AreEqual(40, rig.Credits.Balance, "Nothing granted; balance is net-unchanged.");
             Assert.AreEqual(0, rig.Completed.Count, "No event when nothing was durably granted.");
         }
 
@@ -228,11 +246,14 @@ namespace Veilwalkers.Billing.Tests
             var store = new FakeBillingProgressStore { Stored = new SaveModel() };
             var save = new SaveService(store);
             save.InitializeAsync().GetAwaiter().GetResult();
-            var credits = new CreditService(save, new SaveMutationLock());
+            var mutationLock = new SaveMutationLock();
+            var credits = new CreditService(save, mutationLock);
+            var reconciler = new PurchaseReconciler(save, mutationLock, credits, catalog, adapter, new FakeClock());
 
-            Assert.Throws<ArgumentNullException>(() => new BillingService(null, adapter, credits));
-            Assert.Throws<ArgumentNullException>(() => new BillingService(catalog, null, credits));
-            Assert.Throws<ArgumentNullException>(() => new BillingService(catalog, adapter, null));
+            Assert.Throws<ArgumentNullException>(() => new BillingService(null, adapter, credits, reconciler));
+            Assert.Throws<ArgumentNullException>(() => new BillingService(catalog, null, credits, reconciler));
+            Assert.Throws<ArgumentNullException>(() => new BillingService(catalog, adapter, null, reconciler));
+            Assert.Throws<ArgumentNullException>(() => new BillingService(catalog, adapter, credits, null));
         }
     }
 }

@@ -20,13 +20,16 @@ namespace Veilwalkers.Billing
     /// open Shop) is App/UI on <c>OnInsufficientCredits</c>, NOT Billing calling out.
     /// </para>
     /// <para>
-    /// <b>5.1 is the SIMPLE grant-once-on-success path; 5.2 inserts <c>PurchaseReconciler</c>.</b> The
-    /// canonical flow (architecture.md:522) routes <c>BillingService → Unity IAP → PurchaseReconciler
-    /// (pending→ack→credit once→persist) → CreditService</c>. 5.1 grants directly via
-    /// <c>GrantCreditsAsync</c> in ONE place (the <c>Purchased</c> branch) so 5.2 can interpose the
-    /// reconciler without rewriting this public surface. 5.1 surfaces <see cref="PurchaseFailureReason.GrantFailed"/>
-    /// (paid-but-not-durably-saved) + <see cref="PurchaseFailureReason.AlreadyOwned"/> as the 5.2 seams; it
-    /// does NOT survive interruption or dedup by order id (NFR-4 reconciliation is Story 5.2).
+    /// <b>Story 5.2 interposed <c>PurchaseReconciler</c> into the single grant site — the public surface is
+    /// unchanged.</b> The canonical flow (architecture.md:522) routes <c>BillingService → Unity IAP →
+    /// PurchaseReconciler (pending→ack→credit once→persist) → CreditService</c>. 5.1 deliberately grafted the
+    /// grant into ONE place (the <c>Purchased</c> branch) so 5.2 could swap the bare <c>GrantCreditsAsync</c>
+    /// for <c>PurchaseReconciler.ReconcilePurchaseAsync</c> (write pending-ledger → grant once keyed by Play
+    /// order id → acknowledge → clear) WITHOUT touching <see cref="PurchaseAsync"/>'s signature,
+    /// <see cref="OnPurchaseCompleted"/>, or the <see cref="PurchaseResult"/> taxonomy. The reconciler now
+    /// OWNS the grant; this service still owns the boundary event. <see cref="PurchaseFailureReason.GrantFailed"/>
+    /// flips from "lost until 5.2" to "the in-line grant did not save yet — the launch recovery pass
+    /// (<c>PurchaseReconciler.ReconcilePendingOnLaunchAsync</c>) grants it exactly once next launch."
     /// </para>
     /// </summary>
     public sealed class BillingService : IBillingService
@@ -34,12 +37,18 @@ namespace Veilwalkers.Billing
         private readonly CreditPackCatalog _catalog;
         private readonly IStoreAdapter _store;
         private readonly ICreditService _credits;
+        private readonly PurchaseReconciler _reconciler;
 
-        public BillingService(CreditPackCatalog catalog, IStoreAdapter store, ICreditService credits)
+        public BillingService(
+            CreditPackCatalog catalog,
+            IStoreAdapter store,
+            ICreditService credits,
+            PurchaseReconciler reconciler)
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _credits = credits ?? throw new ArgumentNullException(nameof(credits));
+            _reconciler = reconciler ?? throw new ArgumentNullException(nameof(reconciler));
         }
 
         /// <inheritdoc />
@@ -82,25 +91,30 @@ namespace Veilwalkers.Billing
                 return PurchaseResult.Failed(reason, pack.PackId, _credits.Balance);
             }
 
-            // (3) A completed purchase grants the pack TOTAL (base + bonus, AC-3) ONE-WAY into Economy.
-            // This is the single grant site 5.2's PurchaseReconciler will interpose on (architecture.md:522).
-            Result grant = await _credits.GrantCreditsAsync(pack.TotalCredits).ConfigureAwait(false);
+            // (3) A completed purchase routes through the PurchaseReconciler (Story 5.2, architecture.md:522):
+            // write pending-ledger → grant the pack TOTAL (base + bonus, AC-3) exactly once keyed by the Play
+            // order id → acknowledge → clear. This is the SINGLE grant site 5.1 grafted in ONE place for 5.2
+            // to interpose on — Billing → Economy stays one-way (the reconciler calls GrantCreditsAsync).
+            PurchaseReconciler.PurchaseReconcileResult reconcile =
+                await _reconciler.ReconcilePurchaseAsync(store.PlayOrderId, pack.PackId).ConfigureAwait(false);
 
             // (6) The store charged the player but the local grant did not durably save: surface a distinct
-            // GrantFailed (the 5.2 reconciliation seam) + log loudly. No event — nothing was durably granted.
-            if (!grant.Success)
+            // GrantFailed + log loudly. No event — nothing was durably granted. Unlike 5.1, this is now
+            // RECOVERABLE: the pending record (or a re-attempt) lets the launch reconcile pass grant it
+            // exactly-once on the next launch (NFR-4).
+            if (reconcile.Outcome != PurchaseReconciler.PurchaseReconcileOutcome.Granted)
             {
                 GameLog.Error(
-                    $"BillingService: PAID purchase of '{pack.PackId}' (order {store.PlayOrderId}) granted no Credits — " +
-                    $"the grant did not save ({grant.Message}). Story 5.2's PurchaseReconciler must recover this exactly-once.");
-                return PurchaseResult.Failed(PurchaseFailureReason.GrantFailed, pack.PackId, _credits.Balance);
+                    $"BillingService: PAID purchase of '{pack.PackId}' (order {store.PlayOrderId}) granted no Credits yet — " +
+                    "the in-line grant did not save. The PurchaseReconciler will recover it exactly-once on the next launch.");
+                return PurchaseResult.Failed(PurchaseFailureReason.GrantFailed, pack.PackId, reconcile.NewBalance);
             }
 
             // (4) Success: the new balance is the durable, post-grant balance. Raise OnPurchaseCompleted once.
-            int newBalance = _credits.Balance;
-            GameLog.Info($"BillingService: purchase of '{pack.PackId}' granted {pack.TotalCredits} Credits → balance {newBalance}.");
-            RaisePurchaseCompleted(new PurchaseCompletedEvent(pack.PackId, pack.TotalCredits, newBalance));
-            return PurchaseResult.Succeeded(pack.PackId, pack.TotalCredits, newBalance);
+            int newBalance = reconcile.NewBalance;
+            GameLog.Info($"BillingService: purchase of '{pack.PackId}' granted {reconcile.CreditsGranted} Credits → balance {newBalance}.");
+            RaisePurchaseCompleted(new PurchaseCompletedEvent(pack.PackId, reconcile.CreditsGranted, newBalance));
+            return PurchaseResult.Succeeded(pack.PackId, reconcile.CreditsGranted, newBalance);
         }
 
         private static PurchaseFailureReason MapStoreOutcome(StorePurchaseOutcome outcome)

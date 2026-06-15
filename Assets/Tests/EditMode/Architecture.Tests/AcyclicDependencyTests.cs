@@ -59,7 +59,11 @@ namespace Veilwalkers.Architecture.Tests
                     "Veilwalkers.Monsters", "Veilwalkers.AR"
                 }
             },
-            { "Veilwalkers.Billing", new[] { "Veilwalkers.Core", "Veilwalkers.Economy" } },
+            // Story 5.2 added "Veilwalkers.Persistence" to Billing's row: PurchaseReconciler persists the
+            // pending-purchase ledger through SaveService + mutates SaveModel.PendingPurchases — the same
+            // sibling→Persistence downward edge as Economy/Monsters/Encounter (Persistence is BELOW Billing
+            // in the one-way graph, so it is a legal downward edge; Persistence references only Core).
+            { "Veilwalkers.Billing", new[] { "Veilwalkers.Core", "Veilwalkers.Economy", "Veilwalkers.Persistence" } },
             {
                 "Veilwalkers.App",
                 new[]

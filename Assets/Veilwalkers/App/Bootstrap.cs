@@ -84,6 +84,11 @@ namespace Veilwalkers.App
             // is captured rather than resolved via GameServices.Get<>().
             SaveMutationLock economyMutationLock = null;
 
+            // Hoisted likewise so the post-load continuation can run the Story 5.2 launch
+            // recovery pass (reconcile any purchase interrupted before crediting on a prior
+            // run — granted exactly once). It is captured, not resolved, for the same reason.
+            PurchaseReconciler purchaseReconciler = null;
+
             try
             {
                 // Construct first (see class doc: failures here leave the locator
@@ -259,7 +264,24 @@ namespace Veilwalkers.App
                 // headless by Veilwalkers.Billing.Tests over a real CreditService + a FakeStoreAdapter.
                 var creditPackCatalog = new CreditPackCatalog();
                 var storeAdapter = new UnityIapStoreAdapter();
-                var billingService = new BillingService(creditPackCatalog, storeAdapter, creditService);
+
+                // PurchaseReconciler (Story 5.2, Veilwalkers.Billing) — the exactly-once engine (NFR-4) the
+                // 5.1 BillingService deferred. It interposes into BillingService's SINGLE grant site (the
+                // Purchased branch) without a public-surface change: write pending-ledger → grant once keyed
+                // by Play order id → acknowledge (within Play's window, AC-4) → clear. It is a sibling
+                // Economy-tier mutator of the save model, so it REUSES the SAME shared economyMutationLock as
+                // creditService/progressionService/dailyRewardService (a per-reconciler lock would let a
+                // reconcile write and a credit spend interleave + persist each other's uncommitted deltas);
+                // it REUSES the already-constructed creditService (one-way Billing → Economy via
+                // GrantCreditsAsync), the SAME creditPackCatalog + storeAdapter the service routes through (so
+                // the acknowledge targets the purchase the service made), and the SAME clock as the daily
+                // reward. The real Play acknowledge/consume SDK call is the device-build TODO (com.unity.purchasing
+                // not imported — the editor #else AcknowledgeAsync is a no-op success). The launch recovery
+                // pass (ReconcilePendingOnLaunchAsync) is scheduled post-load below.
+                purchaseReconciler = new PurchaseReconciler(
+                    saveService, economyMutationLock, creditService, creditPackCatalog, storeAdapter, clock);
+                var billingService = new BillingService(
+                    creditPackCatalog, storeAdapter, creditService, purchaseReconciler);
 
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
@@ -385,6 +407,19 @@ namespace Veilwalkers.App
                         grantTask => GameLog.Warn(
                             "Bootstrap: first-launch grant faulted (will retry next launch): " +
                             grantTask.Exception?.GetBaseException()),
+                        TaskContinuationOptions.OnlyOnFaulted);
+
+                    // Story 5.2 (AC-2): reconcile any purchase interrupted before crediting on a PRIOR run —
+                    // granted exactly once (the persisted Granted state + order-id dedup prevent a double
+                    // grant) and acknowledged within Play's window (AC-4). A no-op when PendingPurchases is
+                    // empty (the overwhelming common launch), so it never blocks the splash; it runs HERE,
+                    // post-load, because the reconciler reads SaveService.Current (RequireModel throws before
+                    // the model is loaded — the CreditService before-load contract). Fire-and-forget like the
+                    // grant above; every fault is observed so it never dies as an unobserved task exception.
+                    purchaseReconciler.ReconcilePendingOnLaunchAsync().ContinueWith(
+                        reconcileTask => GameLog.Warn(
+                            "Bootstrap: launch purchase-reconcile faulted (will retry next launch): " +
+                            reconcileTask.Exception?.GetBaseException()),
                         TaskContinuationOptions.OnlyOnFaulted);
                 });
         }

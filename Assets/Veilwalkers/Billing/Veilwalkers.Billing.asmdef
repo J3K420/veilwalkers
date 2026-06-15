@@ -3,7 +3,8 @@
     "rootNamespace": "Veilwalkers.Billing",
     "references": [
         "Veilwalkers.Core",
-        "Veilwalkers.Economy"
+        "Veilwalkers.Economy",
+        "Veilwalkers.Persistence"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

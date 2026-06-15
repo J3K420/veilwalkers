@@ -53,6 +53,21 @@ namespace Veilwalkers.Billing
             GameLog.Info("UnityIapStoreAdapter.FetchLocalizedPricesAsync: device-path stub (TODO Story 6.3 / device build).");
             return Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
         }
+
+        // TODO(Story 6.3 / device build): wire to Unity IAP 5 / Play Billing 8. Acknowledge (Consumable
+        // packs are CONSUMED) the purchase whose Play order id is playOrderId via the IStoreController
+        // (ConfirmPendingPurchase(product) / the Play Billing acknowledgePurchase|consumeAsync). Play
+        // auto-refunds a purchase not acknowledged within ~3 days (AC-4), and treats acknowledge as
+        // idempotent — re-acknowledging is a no-op success, so a re-run reconcile pass is safe. Return true
+        // on success, false on a transient failure (the reconciler retries next pass). Until the package is
+        // imported there is no store to acknowledge against, so this is a conservative stub that never
+        // crashes (NFR-3): report a no-op success so an in-editor/device-stub reconcile pass clears the
+        // pending ledger rather than looping forever on an un-acknowledgeable order.
+        public Task<bool> AcknowledgeAsync(string playOrderId)
+        {
+            GameLog.Info($"UnityIapStoreAdapter.AcknowledgeAsync('{playOrderId}'): device-path stub — Unity IAP is not imported yet (TODO Story 6.3 / device build).");
+            return Task.FromResult(true);
+        }
 #else
         // Editor / non-Android: the Unity IAP / Play Billing subsystem does not exist (and the package is
         // not imported). Report a non-completed Failed store result + no localized prices so the
@@ -70,6 +85,17 @@ namespace Veilwalkers.Billing
         {
             GameLog.Info("UnityIapStoreAdapter.FetchLocalizedPricesAsync: no-op off-device (no store prices in the editor).");
             return Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+        }
+
+        // Editor / non-Android: there is no Play store to acknowledge against. Report a no-op SUCCESS (true)
+        // so the BillingService → PurchaseReconciler reconcile pass completes and clears the pending ledger
+        // in-editor (mirroring the never-throws, degrade-gracefully posture of the purchase stub). The
+        // reconciler's acknowledge SEQUENCE + retry-on-false logic is proven entirely against FakeStoreAdapter
+        // in Billing.Tests, platform-independent — the real Play acknowledge round-trip is the device build.
+        public Task<bool> AcknowledgeAsync(string playOrderId)
+        {
+            GameLog.Info($"UnityIapStoreAdapter.AcknowledgeAsync('{playOrderId}'): no-op off-device (Play Billing unavailable in the editor).");
+            return Task.FromResult(true);
         }
 #endif
     }

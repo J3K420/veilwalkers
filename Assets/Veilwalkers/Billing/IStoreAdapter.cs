@@ -18,9 +18,11 @@ namespace Veilwalkers.Billing
     /// lives in <see cref="BillingService"/>.
     /// </para>
     /// <para>
-    /// <b>5.1 surface only.</b> The exactly-once acknowledge / pending-ledger / consume surface is Story
-    /// 5.2 (<c>PurchaseReconciler</c>) — deliberately NOT on this interface yet; the order id is carried on
-    /// <see cref="StorePurchaseResult"/> so 5.2 can dedup on it without a seam change.
+    /// <b>5.2 adds the acknowledge surface.</b> Story 5.1 deliberately shipped only the purchase + price
+    /// surface and left the exactly-once acknowledge / pending-ledger / consume surface for Story 5.2's
+    /// <c>PurchaseReconciler</c>. The order id is carried on <see cref="StorePurchaseResult"/> so the
+    /// reconciler dedups on it; <see cref="AcknowledgeAsync"/> (added in 5.2) is the Play "acknowledge within
+    /// the allowed window" call (AC-4 — un-acknowledged purchases auto-refund).
     /// </para>
     /// </summary>
     public interface IStoreAdapter
@@ -32,6 +34,18 @@ namespace Veilwalkers.Billing
         /// degrades to <see cref="StorePurchaseOutcome.Failed"/>, logged via <c>GameLog</c>.
         /// </summary>
         Task<StorePurchaseResult> PurchaseAsync(string packId);
+
+        /// <summary>
+        /// Acknowledge (or consume) a completed purchase with Google Play, keyed by its Play order id
+        /// (Story 5.2, AC-4). Play AUTO-REFUNDS a purchase not acknowledged within its allowed window (~3
+        /// days), so the <c>PurchaseReconciler</c> calls this for every credited purchase, retrying on a
+        /// transient failure on the next reconcile pass. Returns <c>true</c> when the purchase is
+        /// acknowledged (Play treats acknowledge as idempotent — acknowledging an already-acknowledged order
+        /// is a no-op success, so a re-run launch pass is safe), <c>false</c> on a transient failure (the
+        /// reconciler leaves the pending record so the next pass retries). NEVER throws for an expected
+        /// outcome (NFR-3) — a subsystem failure degrades to <c>false</c>, logged via <c>GameLog</c>.
+        /// </summary>
+        Task<bool> AcknowledgeAsync(string playOrderId);
 
         /// <summary>
         /// Fetch Play's localized, formatted price strings for the given product ids (AC-1 — prices are
