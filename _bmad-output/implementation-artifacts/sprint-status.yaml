@@ -35,8 +35,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-10
-last_updated: 2026-06-14
-# 4.1 done (first Epic-4 story); epic-4 in-progress
+last_updated: 2026-06-15
+# 4.4 done; epic-4 in-progress (4.5-4.7 remain)
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -79,7 +79,7 @@ development_status:
   4-1-drive-the-encounter-with-an-explicit-state-machine: done
   4-2-lure-a-monster-basic-premium-multi: done
   4-3-scan-a-monster-for-free: done
-  4-4-capture-a-monster-free-base-strong-capture: backlog
+  4-4-capture-a-monster-free-base-strong-capture: done
   4-5-slay-a-monster-for-superior-loot: backlog
   4-6-apply-encounter-charges-stability-boost-nightveil-filter: backlog
   4-7-materialize-monsters-with-tiered-accessible-entrances: backlog

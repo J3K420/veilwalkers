@@ -52,7 +52,11 @@ namespace Veilwalkers.Encounter
     {
         private readonly SaveService _saveService;
         private readonly ICreditService _creditService;
-        private readonly IProgressionService _progressionService;
+        // The CONCRETE ProgressionService (not the IProgressionService interface) because the composed Capture
+        // write (Story 4.4) needs the StageXpGrant seam — the lock-free, persist-free XP/level/charge-grant
+        // delta the one Capture SaveAsync applies (AR-8). The same posture as the concrete CodexService below
+        // (whose StageDiscovery/StageScan seams the composed writes use). It still IS an IProgressionService.
+        private readonly ProgressionService _progressionService;
         private readonly CodexService _codexService;
         private readonly SaveMutationLock _mutationLock;
         private readonly AnchorRestoreService _anchorRestoreService;
@@ -64,6 +68,11 @@ namespace Veilwalkers.Encounter
         private readonly LureSystem _lureSystem;
         private readonly PlaneAnchorService _planeAnchorService;
         private readonly MonsterSpawner _monsterSpawner;
+
+        // Story 4.4 — the Capture success-roll decision (base vs Strong chance, the LureSystem precedent). The
+        // service composes its roll outcome into the atomic Capture write (the system rolls, the service
+        // persists). Ctor-injected (AR-4).
+        private readonly CaptureSystem _captureSystem;
 
         private readonly EncounterStateMachine _stateMachine = new EncounterStateMachine();
 
@@ -102,14 +111,15 @@ namespace Veilwalkers.Encounter
         public EncounterService(
             SaveService saveService,
             ICreditService creditService,
-            IProgressionService progressionService,
+            ProgressionService progressionService,
             CodexService codexService,
             SaveMutationLock mutationLock,
             AnchorRestoreService anchorRestoreService,
             ArSessionService arSessionService,
             LureSystem lureSystem,
             PlaneAnchorService planeAnchorService,
-            MonsterSpawner monsterSpawner)
+            MonsterSpawner monsterSpawner,
+            CaptureSystem captureSystem)
         {
             _saveService = saveService ?? throw new ArgumentNullException(nameof(saveService));
             _creditService = creditService ?? throw new ArgumentNullException(nameof(creditService));
@@ -121,6 +131,7 @@ namespace Veilwalkers.Encounter
             _lureSystem = lureSystem ?? throw new ArgumentNullException(nameof(lureSystem));
             _planeAnchorService = planeAnchorService ?? throw new ArgumentNullException(nameof(planeAnchorService));
             _monsterSpawner = monsterSpawner ?? throw new ArgumentNullException(nameof(monsterSpawner));
+            _captureSystem = captureSystem ?? throw new ArgumentNullException(nameof(captureSystem));
 
             // AC-3: the encounter consumer of the AR-loss event 3.3 already raises. Subscribed for the
             // service's lifetime; symmetric unsubscribe lands with the Epic-6 disposal/teardown contract.
@@ -461,25 +472,275 @@ namespace Veilwalkers.Encounter
         /// populate a typed failure's balance field on an early-out path).</summary>
         private int CurrentBalance() => _saveService.Current?.Credits ?? 0;
 
-        // ---- AC-2: the atomic multi-delta write primitive + a representative composed action ----
+        // ---- FR-8 (Story 4.4): Capture — free base / Strong Capture (earned charge), with a success roll ----
 
         /// <summary>
-        /// Capture a monster (the REPRESENTATIVE composed action proving AC-2): consume one
-        /// <see cref="ChargeType.StrongCapture"/> charge AND record the Codex Capture discovery in ONE atomic
-        /// save write. The full Capture success math + the free-base-vs-Strong choice is Story 4.4 — 4.1 wires
-        /// the charge+codex composed write so the AC-2 mechanism is real + tested. Returns a typed
-        /// <see cref="SpendResult"/> (never throws for an expected failure: a zero-charge block, a persist
-        /// fault). Requires <paramref name="monsterId"/> to be a valid universe id (programmer error otherwise).
+        /// Capture the settled Monster <paramref name="monsterId"/> (Story 4.4, FR-8). A BASE Capture is FREE
+        /// (no Credits, no charge); a STRONG Capture (<paramref name="strong"/> = true) consumes exactly one
+        /// <see cref="ChargeType.StrongCapture"/> charge to apply a STRICTLY HIGHER success probability (never
+        /// Credits; blocked at zero charges; never negative). The outcome is a ROLL (<see cref="CaptureSystem"/>):
+        /// a SUCCESS records the Codex Capture discovery (X/67 +1 if newly discovered) AND grants XP (AC-4),
+        /// committed in ONE atomic save (AR-8); a MISS records nothing and leaves the encounter live for a FREE
+        /// Retry (just call this again — AC-3). The Credit balance NEVER changes (AC-1/AC-2).
+        /// <para>
+        /// Returns a typed <see cref="CaptureResult"/> — never throws for an expected outcome (a miss, a
+        /// zero-charge block, an out-of-sequence call, a persist fault are all reported on the result, AR-7);
+        /// throws only for a null/empty/invalid monster id (programmer error). <see cref="CaptureResult.Success"/>
+        /// = "the attempt ran"; <see cref="CaptureResult.Captured"/> = the roll outcome (captured vs missed).
+        /// </para>
+        /// <para>
+        /// Drives the in-encounter loop (Lured → Acting → Resolving → Lured) — modelled on
+        /// <see cref="TryScanAsync"/> (it calls <c>BeginAction</c> itself then <c>BeginResolve</c>), NOT the
+        /// inherited <see cref="RunActionAsync"/> (which assumes the caller already drove Lured → Acting and
+        /// returns the misleading <c>PersistenceFailed</c>+0 on its out-of-sequence branch). A MISS is a
+        /// successfully RESOLVED action (it <c>CompleteResolve</c>s back to Lured), not a state-machine failure.
+        /// </para>
         /// </summary>
-        public Task<SpendResult> TryCaptureAsync(string monsterId)
+        public async Task<CaptureResult> TryCaptureAsync(string monsterId, bool strong)
         {
-            if (string.IsNullOrEmpty(monsterId))
+            // Validate the FULL id up front (programmer error — same contract as StageDiscovery/TryScanAsync)
+            // BEFORE touching the state machine, so a bad id never leaves the machine stranded mid-resolve and
+            // an invalid id throws regardless of the roll outcome (not only on a winning roll).
+            if (string.IsNullOrEmpty(monsterId) || !MonsterDatabase.IsValidMonsterId(monsterId))
             {
-                throw new ArgumentException("A monster id is required.", nameof(monsterId));
+                throw new ArgumentException(
+                    $"'{monsterId}' is not a valid Monster id (expected mon01..mon{MonsterDatabase.UniverseCount:00}).",
+                    nameof(monsterId));
             }
 
-            return CommitActionAsync(monsterId, ChargeType.StrongCapture, DiscoverySource.Capture);
+            // The state machine must be able to enter Acting — a live encounter with a settled Monster (AC-1).
+            // A Capture out of sequence (no Lured encounter) is a typed NotSettled failure, NOT the misleading
+            // inherited PersistenceFailed+0 (settles the 4.1 out-of-sequence deferral for the Capture path).
+            if (!_stateMachine.BeginAction())
+            {
+                GameLog.Warn(
+                    $"EncounterService.TryCaptureAsync ignored — no settled Monster to capture (state: {_stateMachine.State}).");
+                return CaptureResult.Failed(CaptureFailureReason.NotSettled, strong, StrongChargeCount());
+            }
+
+            // Lured → Acting succeeded; open the commit window (Acting → Resolving), run the rolled write, and
+            // settle the resolve. A MISS still CompleteResolves (a resolved "miss" returns to Lured for Retry,
+            // AC-3); only a true persist fault FailResolves. Mirrors TryScanAsync's sequencing.
+            if (!_stateMachine.BeginResolve())
+            {
+                // Should be unreachable (we just entered Acting). Reconcile rather than stranding the machine in
+                // Acting (a stuck-in-Acting encounter is bricked) — EndEncounter resets to Idle + releases the
+                // Lure's pooled spawns (the [[failure-path-cleanup-parity]] discipline, the TryScanAsync precedent).
+                GameLog.Error(
+                    "EncounterService.TryCaptureAsync: could not begin resolve after entering Acting (unexpected) — " +
+                    "ending the encounter to avoid stranding it in Acting.");
+                EndEncounter();
+                return CaptureResult.Failed(CaptureFailureReason.NotSettled, strong, StrongChargeCount());
+            }
+
+            // Roll the success OUTSIDE the locked write (the LureSystem precedent: the system rolls, the service
+            // composes the persist with the known outcome). One draw on IRandom against the variant's chance.
+            bool rollSucceeded = _captureSystem.RollCapture(strong);
+
+            CaptureResult result;
+            try
+            {
+                result = await CommitCaptureAsync(monsterId, strong, rollSucceeded).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // The composed write throws only for a programmer/system error (an unloaded/corrupt model —
+                // RequireModel). We are mid-resolve (BeginResolve succeeded above); rethrowing without settling
+                // would strand the machine in Resolving (a bricked encounter — every later BeginAction needs
+                // Lured). Reconcile via EndEncounter (Resets to Idle + releases the Lure's pooled spawns) BEFORE
+                // propagating — the [[failure-path-cleanup-parity]] discipline, the BeginResolve-failed precedent
+                // above. The caller still sees the exception (it IS a programmer error), just not a stranded machine.
+                EndEncounter();
+                throw;
+            }
+
+            // A persist fault (the ONLY false-Success outcome that reached the write) FailResolves; everything
+            // else — a capture OR a miss OR a zero-charge block — is a clean resolution back to Lured.
+            if (result.Success || result.FailureReason != CaptureFailureReason.PersistenceFailed)
+            {
+                _stateMachine.CompleteResolve();
+            }
+            else
+            {
+                _stateMachine.FailResolve();
+            }
+
+            return result;
         }
+
+        /// <summary>The current <see cref="ChargeType.StrongCapture"/> count, or 0 if the model is not loaded
+        /// (defensive — used only to populate a typed failure's RemainingCharges on an early-out path).</summary>
+        private int StrongChargeCount()
+        {
+            SaveModel model = _saveService.Current;
+            return model == null ? 0 : ChargeInventory.GetCount(model, ChargeType.StrongCapture);
+        }
+
+        /// <summary>
+        /// The atomic CAPTURE composed write (AR-8) — the FOURTH composed-write sibling (after the 4.1 charge
+        /// <see cref="CommitActionAsync"/>, the 4.2 credit <see cref="CommitLureSpendAsync"/>, the 4.3 free
+        /// <see cref="CommitScanAsync"/>). Unlike its siblings the delta is ROLL-dependent: it may consume a
+        /// Strong charge (Decision A — on the ATTEMPT, win OR miss), and stage a discovery + XP grant ONLY on a
+        /// winning roll. Same pipeline shape: acquire the SHARED <see cref="SaveMutationLock"/> once → capture
+        /// the model ref once → mutate the staged slices in memory → ONE <c>SaveAsync</c> → recovery-swap guard
+        /// → whole-mutation rollback on any fault → release → events after release. NEVER mutates
+        /// <c>model.Credits</c> (AC-1/AC-2 — structurally absent here).
+        /// <para>
+        /// The four outcome shapes:
+        /// <list type="bullet">
+        /// <item><b>Strong, zero charges</b> → typed <see cref="CaptureFailureReason.InsufficientCharges"/>, no
+        ///   mutation, no persist (save-count 0). The "earn via XP" block (AC-2); the count never goes negative.</item>
+        /// <item><b>base MISS</b> → nothing staged (no charge, no discovery, no XP) → no persist (save-count 0),
+        ///   a <see cref="CaptureResult"/> with <c>Captured=false</c> (free Retry, AC-3).</item>
+        /// <item><b>Strong MISS</b> → the charge IS consumed (Decision A) but NO discovery/XP → ONE persist
+        ///   (save-count 1) of the charge decrement, <c>Captured=false</c> (free Retry).</item>
+        /// <item><b>capture (base or Strong)</b> → (Strong: charge consumed) + Codex discovery + XP grant →
+        ///   ONE persist (save-count 1), <c>Captured=true</c>.</item>
+        /// </list>
+        /// Decision F': a Strong capture both CONSUMES one Strong charge AND may GRANT level-up charges (XP) on
+        /// the SAME field — consume FIRST, then stage the XP grant (which reads the post-consume count as its
+        /// prior and adds the level-up grants on top). Both roll back together on a fault.
+        /// </para>
+        /// </summary>
+        private async Task<CaptureResult> CommitCaptureAsync(string monsterId, bool strong, bool rollSucceeded)
+        {
+            CaptureResult result;
+            bool committed = false;
+            bool chargeConsumed = false;
+            int newChargeCount = 0;
+            CodexService.CodexStage codexStage = default;
+            ProgressionService.ProgressionStage xpStage = default;
+
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Capture the model reference ONCE — a recovery swap mid-persist must never make the rollback
+                // write onto a NEW model (the inherited rollback-fidelity discipline).
+                SaveModel model = RequireModel();
+
+                int priorChargeCount = ChargeInventory.GetCount(model, ChargeType.StrongCapture);
+
+                if (strong && priorChargeCount == 0)
+                {
+                    // AC-2 zero-charge block: the "earn via XP" failure. No mutation, no persist, no codex/XP
+                    // stage, no event. The only decrement below is guarded by this check, so the count can
+                    // never go negative.
+                    result = CaptureResult.Failed(CaptureFailureReason.InsufficientCharges, wasStrong: strong, priorChargeCount);
+                }
+                else if (!strong && !rollSucceeded)
+                {
+                    // base MISS: nothing changed (free attempt, failed roll → no charge, no discovery, no XP).
+                    // Skip the SaveAsync entirely (AR-8 — no write when nothing changed). A free Retry (AC-3).
+                    result = CaptureResult.Succeeded(
+                        monsterId, captured: false, wasStrong: false, chargeConsumed: false, priorChargeCount);
+                }
+                else
+                {
+                    // Something will change → stage the slices, then ONE persist.
+                    // (a) Strong always consumes its charge on the ATTEMPT (win OR miss — Decision A). The charge
+                    // buys the improved odds, not a guaranteed capture. Set chargeConsumed BEFORE the SetCount so
+                    // that even if SetCount itself threw (it should not — the count is guarded >= 0), the catch
+                    // block still reverts the charge: the flag that controls rollback must never lag the mutation
+                    // it guards (the rollback-fidelity discipline; CR patch).
+                    if (strong)
+                    {
+                        chargeConsumed = true;
+                        ChargeInventory.SetCount(model, ChargeType.StrongCapture, priorChargeCount - 1);
+                    }
+
+                    // (b) on a WINNING roll: stage the Codex discovery + the XP grant (AC-1/AC-4). On a Strong
+                    // MISS neither is staged (only the charge decrement persists). Decision F': the XP stage
+                    // reads the POST-consume charge count as its prior, so a level-up grant nets correctly on
+                    // top of the consume.
+                    if (rollSucceeded)
+                    {
+                        codexStage = _codexService.StageDiscovery(model, monsterId, DiscoverySource.Capture);
+                        xpStage = _progressionService.StageXpGrant(model, _lureSystem.Config.XpPerCapture);
+                    }
+
+                    try
+                    {
+                        // ONE persist for every staged slice (AR-8: never two persists per action).
+                        await _saveService.SaveAsync().ConfigureAwait(false);
+
+                        if (ReferenceEquals(_saveService.Current, model))
+                        {
+                            committed = true;
+                            newChargeCount = ChargeInventory.GetCount(model, ChargeType.StrongCapture);
+                            result = CaptureResult.Succeeded(
+                                monsterId, captured: rollSucceeded, wasStrong: strong, chargeConsumed, newChargeCount);
+                        }
+                        else
+                        {
+                            // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at,
+                            // NOT this capture. Revert EVERY staged slice onto the captured ref. ORDER IS
+                            // LOAD-BEARING for the charge slice (Decision F'): xpStage captured the StrongCapture
+                            // count POST-consume (priorChargeCount-1), so xpStage.Revert() writes priorChargeCount-1
+                            // back; the explicit restore to priorChargeCount MUST run AFTER it (else the Revert
+                            // would overwrite the true pre-action value and leak one charge). So: xpStage.Revert()
+                            // FIRST, then the explicit charge restore.
+                            xpStage.Revert();
+                            codexStage.Revert();
+                            if (chargeConsumed)
+                            {
+                                ChargeInventory.SetCount(model, ChargeType.StrongCapture, priorChargeCount);
+                            }
+
+                            GameLog.Error(
+                                $"EncounterService: a Capture ({(strong ? "Strong" : "base")} on '{monsterId}') rolled " +
+                                "back — the save model was swapped mid-operation (recovery raced a mutation).");
+                            result = CaptureResult.Failed(CaptureFailureReason.PersistenceFailed, strong, priorChargeCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Persist fault: revert EVERY staged slice onto the captured ref — never recompute. ORDER
+                        // IS LOAD-BEARING (Decision F', see the swap branch above): xpStage.Revert() FIRST
+                        // (restores the StrongCapture count to its post-consume snapshot priorChargeCount-1), THEN
+                        // the explicit restore to the true pre-action priorChargeCount.
+                        xpStage.Revert();
+                        codexStage.Revert();
+                        if (chargeConsumed)
+                        {
+                            ChargeInventory.SetCount(model, ChargeType.StrongCapture, priorChargeCount);
+                        }
+
+                        GameLog.Error(
+                            $"EncounterService: a Capture ({(strong ? "Strong" : "base")} on '{monsterId}') rolled " +
+                            $"back — persist failed. {ex.Message}");
+                        result = CaptureResult.Failed(CaptureFailureReason.PersistenceFailed, strong, priorChargeCount);
+                    }
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+
+            // Events AFTER the lock releases, ONLY on a committed capture (a miss/block commits no events). The
+            // discovery + XP/level/charge events live with their owning services (raised via the staged handles).
+            if (committed)
+            {
+                // Raise the StrongCapture charges-changed event for the consume — BUT NOT if the XP stage already
+                // changed (and will raise) the StrongCapture count via a level-up grant: on a Strong WIN that
+                // crosses a threshold, the level-up grant nets against the consume on the SAME field, so
+                // xpStage.RaiseCommittedEvents() below already reports the final StrongCapture value. Without this
+                // guard a HUD would see the SAME value twice (CR patch — the duplicate-event fix). When the XP
+                // stage did NOT touch StrongCapture (a Strong miss, or a win with no level-up), this explicit
+                // raise is the only one and is required.
+                if (chargeConsumed && !xpStage.ChargesChangedFor(ChargeType.StrongCapture))
+                {
+                    RaiseChargesChanged(ChargeType.StrongCapture, newChargeCount);
+                }
+
+                codexStage.RaiseCommittedEvents();
+                xpStage.RaiseCommittedEvents();
+            }
+
+            return result;
+        }
+
+        // ---- AC-2: the atomic multi-delta write primitive (Slay 4.5 / extras 4.6 compose this) ----
 
         /// <summary>
         /// Run a composed action as the encounter state machine expects (Acting → Resolving → Acting): begin
@@ -487,8 +748,8 @@ namespace Veilwalkers.Encounter
         /// the machine returns to a live state — and an AR interruption that arrived DURING the write is
         /// applied now (decision H2, honored by <see cref="EncounterStateMachine.CompleteResolve"/>/
         /// <see cref="EncounterStateMachine.FailResolve"/>). The caller must be in <see cref="EncounterState.Acting"/>
-        /// (i.e. inside a live encounter mid-action). The full FR-6–10 action flows (4.2–4.6) call this; 4.1
-        /// proves it via <see cref="TryCaptureInEncounterAsync"/>.
+        /// (i.e. inside a live encounter mid-action). The remaining FR-9–10 action flows (Slay 4.5, extras 4.6)
+        /// compose this generic charge+discovery primitive.
         /// </summary>
         public async Task<SpendResult> RunActionAsync(string monsterId, ChargeType chargeType, DiscoverySource via)
         {
@@ -679,19 +940,6 @@ namespace Veilwalkers.Encounter
             {
                 _mutationLock.Release();
             }
-        }
-
-        /// <summary>The representative IN-ENCOUNTER composed action (proves AC-2 + the state-machine loop):
-        /// a Strong-Capture charge + a Codex Capture, committed atomically, driven through Acting → Resolving →
-        /// Lured. Capture math is Story 4.4.</summary>
-        public Task<SpendResult> TryCaptureInEncounterAsync(string monsterId)
-        {
-            if (string.IsNullOrEmpty(monsterId))
-            {
-                throw new ArgumentException("A monster id is required.", nameof(monsterId));
-            }
-
-            return RunActionAsync(monsterId, ChargeType.StrongCapture, DiscoverySource.Capture);
         }
 
         /// <summary>

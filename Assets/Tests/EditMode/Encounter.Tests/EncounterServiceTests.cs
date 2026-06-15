@@ -49,6 +49,7 @@ namespace Veilwalkers.Encounter.Tests
             public PlaneAnchorService PlaneAnchor;
             public FakeSpawnSink SpawnSink;
             public MonsterSpawner Spawner;
+            public CaptureSystem CaptureSystem;
             public EncounterService Encounter;
         }
 
@@ -104,10 +105,15 @@ namespace Veilwalkers.Encounter.Tests
             var planeAnchor = new PlaneAnchorService(anchorProvider);
             var spawnSink = new FakeSpawnSink();
             var spawner = new MonsterSpawner(spawnSink);
+            // Story 4.4 — the Capture success-roll system shares the SAME FakeRandom as LureSystem (one
+            // randomness seam per encounter, the production posture). Tests script its draws via the shared
+            // `random`: a draw BELOW the chance wins, ABOVE loses. (⚠️ an empty FakeRandom queue defaults to
+            // 0.0 = a guaranteed WIN, so every Capture test enqueues its draw explicitly.)
+            var captureSystem = new CaptureSystem(random);
 
             var encounter = new EncounterService(
                 save, credit, progression, codex, mutationLock, anchorRestore, arSessionService,
-                lureSystem, planeAnchor, spawner);
+                lureSystem, planeAnchor, spawner, captureSystem);
 
             return new Harness
             {
@@ -130,6 +136,7 @@ namespace Veilwalkers.Encounter.Tests
                 PlaneAnchor = planeAnchor,
                 SpawnSink = spawnSink,
                 Spawner = spawner,
+                CaptureSystem = captureSystem,
                 Encounter = encounter,
             };
         }
@@ -153,92 +160,77 @@ namespace Veilwalkers.Encounter.Tests
         public void Ctor_null_args_throw()
         {
             var h = CreateHarness(new SaveModel());
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null, h.LureSystem, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, null, h.PlaneAnchor, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, null, h.Spawner));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, null));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, null, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, null, h.Spawner, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, null, h.CaptureSystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, null));
         }
 
-        // ---- AC-2: atomic multi-delta commit ----
+        // ---- AC-2: the generic atomic multi-delta write primitive (RunActionAsync — Slay 4.5 composes it) ----
+        // 4.1's representative capture proved CommitActionAsync (charge + codex in ONE save, two-slice rollback).
+        // 4.4 replaced the capture representative with the REAL rolled Capture (below); these pins keep the
+        // generic charge+discovery primitive (still public, composed by Slay 4.5) covered via RunActionAsync.
+
+        // Drive a Monster into a live (Acting) encounter so RunActionAsync's precondition holds.
+        private static Harness ActingHarness(SaveModel seed)
+        {
+            var h = LuredHarness(seed);
+            Assert.IsTrue(h.Encounter.BeginAction(), "Precondition: Lured → Acting.");
+            return h;
+        }
 
         [Test]
-        public void Capture_commits_charge_and_codex_in_ONE_save_write()
+        public void RunAction_commits_charge_and_codex_in_ONE_save_write()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 1 });
+            var h = ActingHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
             int savesBefore = h.Store.SaveCalls;
 
-            SpendResult result = h.Encounter.TryCaptureAsync(MonsterId).GetAwaiter().GetResult();
+            SpendResult result = h.Encounter
+                .RunActionAsync(MonsterId, ChargeType.StrongCapture, DiscoverySource.Capture)
+                .GetAwaiter().GetResult();
 
-            Assert.IsTrue(result.Success, "A capture with a charge available succeeds.");
-            // BOTH slices committed:
+            Assert.IsTrue(result.Success, "A composed action with a charge available succeeds.");
             Assert.AreEqual(0, h.Progression.GetChargeCount(ChargeType.StrongCapture), "The charge was consumed.");
-            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The codex Capture discovery was recorded.");
-            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Captured, "The Captured flag is set.");
-            // ONE persist for the whole action (AR-8 — never two persists per action).
-            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "Exactly ONE SaveAsync for the composed action.");
-            // ...and it actually persisted both slices (read back the stored snapshot).
-            Assert.AreEqual(0, h.Store.Stored.StrongCaptureCharges);
-            Assert.IsTrue(h.Store.Stored.Codex.ContainsKey(MonsterId));
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The codex discovery was recorded.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "Exactly ONE SaveAsync for the composed action (AR-8).");
+            Assert.AreEqual(0, h.Store.Stored.StrongCaptureCharges, "...persisted the charge slice.");
+            Assert.IsTrue(h.Store.Stored.Codex.ContainsKey(MonsterId), "...persisted the codex slice.");
         }
 
         [Test]
-        public void Persist_fault_rolls_back_BOTH_slices()
+        public void RunAction_persist_fault_rolls_back_BOTH_slices()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 1 });
+            var h = ActingHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
             h.Store.FailNextSave = true;
-            int savesBefore = h.Store.SaveCalls;
 
-            // The persist fault logs from BOTH SaveService ("save failed") and EncounterService ("rolled
-            // back") — assert the BEHAVIOR (the typed failure + the two-slice rollback), not the exact logs.
             LogAssert.ignoreFailingMessages = true;
-            SpendResult result = h.Encounter.TryCaptureAsync(MonsterId).GetAwaiter().GetResult();
+            SpendResult result = h.Encounter
+                .RunActionAsync(MonsterId, ChargeType.StrongCapture, DiscoverySource.Capture)
+                .GetAwaiter().GetResult();
             LogAssert.ignoreFailingMessages = false;
 
             Assert.IsFalse(result.Success, "A persist fault is a typed failure, not a faulted task.");
             Assert.AreEqual(SpendFailureReason.PersistenceFailed, result.FailureReason);
-            // BOTH slices reverted to pre-action values (mutation-testable: reverting only one → red).
             Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "The charge is restored.");
             Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "The codex entry was NOT leaked.");
-            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "Exactly one SaveAsync was attempted.");
         }
 
         [Test]
-        public void Persist_fault_does_NOT_remove_a_pre_existing_codex_entry()
+        public void RunAction_zero_charge_is_a_typed_failure_with_no_persist()
         {
-            // The structural-codex-rollback pin: when the action's persist FAILS, the rollback must NOT delete
-            // a codex entry that pre-existed the action (the key-PRE-EXISTED RollBack case). The composed
-            // action here re-captures an already-Captured monster — the codex stage is a no-op (flag already
-            // set), but the CHARGE still mutates + persists + fails, exercising the rollback path. A naive
-            // revert that blindly did Codex.Remove(id) would delete the pre-existing entry → this test goes red.
-            var seed = new SaveModel { StrongCaptureCharges = 1 };
-            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
-            var h = CreateHarness(seed);
-            h.Store.FailNextSave = true;
-
-            LogAssert.ignoreFailingMessages = true; // SaveService + EncounterService both log on the fault
-            SpendResult result = h.Encounter.TryCaptureAsync(MonsterId).GetAwaiter().GetResult();
-            LogAssert.ignoreFailingMessages = false;
-
-            Assert.IsFalse(result.Success, "The persist fault is a typed failure.");
-            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The pre-existing entry must survive the rollback (not removed).");
-            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Captured, "Its Captured flag is intact.");
-            Assert.AreEqual("2026-06-01", h.Codex.GetEntry(MonsterId).Discovered, "Its first-discovered date is intact.");
-            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "The charge is restored.");
-        }
-
-        [Test]
-        public void Zero_charge_capture_is_a_typed_failure_with_no_persist_and_no_codex_write()
-        {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 0 });
+            var h = ActingHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 0 });
             int savesBefore = h.Store.SaveCalls;
 
-            SpendResult result = h.Encounter.TryCaptureAsync(MonsterId).GetAwaiter().GetResult();
+            SpendResult result = h.Encounter
+                .RunActionAsync(MonsterId, ChargeType.StrongCapture, DiscoverySource.Capture)
+                .GetAwaiter().GetResult();
 
             Assert.IsFalse(result.Success);
             Assert.AreEqual(SpendFailureReason.InsufficientCharges, result.FailureReason, "Zero charges is the 'earn via XP' block.");
@@ -246,55 +238,325 @@ namespace Veilwalkers.Encounter.Tests
             Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist on a blocked action.");
         }
 
+        // ---- AC-1/2/3/4 (Story 4.4): Capture — free base / Strong Capture, with a success ROLL ----
+        // Every Capture test enqueues its roll EXPLICITLY: FakeRandom.NextDouble() defaults to 0.0 (a WIN) on an
+        // empty queue, so a forgotten enqueue would silently pass a fail-path test. Win = draw < chance; lose =
+        // draw >= chance (Base 0.50, Strong 0.85 — so 0.0 always wins, 0.99 always loses both).
+        private const double WinDraw = 0.0;   // below any success chance → the Monster is captured
+        private const double LoseDraw = 0.99; // above both chances → a miss (free Retry)
+
         [Test]
-        public void Capture_raises_the_discovery_event_on_a_committed_first_discovery()
+        public void Base_capture_success_records_codex_and_xp_in_ONE_save_no_credits_no_charge()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 1 });
-            string discovered = null;
-            h.Codex.OnMonsterDiscovered += id => discovered = id;
+            // AC-1 + AC-4: a free base Capture that WINS records the Codex discovery + grants XP in exactly ONE
+            // save, consuming NO Credits and NO charge.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 2 });
+            int creditsAfterLure = h.Save.Current.Credits; // 9 (Basic cost 1)
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw); // base roll wins
 
-            h.Encounter.TryCaptureAsync(MonsterId).GetAwaiter().GetResult();
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
 
-            Assert.AreEqual(MonsterId, discovered, "The committed first discovery raises OnMonsterDiscovered (via the staged handle).");
+            Assert.IsTrue(result.Success, "The attempt ran cleanly.");
+            Assert.IsTrue(result.Captured, "A winning base roll captures the Monster.");
+            Assert.IsFalse(result.WasStrong);
+            Assert.IsFalse(result.ChargeConsumed, "Base Capture consumes no charge.");
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The Codex Capture discovery was recorded.");
+            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Captured, "The Captured flag is set.");
+            Assert.AreEqual(xpBefore + h.Config.XpPerCapture, h.Save.Current.Xp, "AC-4: XP granted on a successful Capture.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: ONE SaveAsync (codex + XP together).");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "AC-1: the Credit balance never changes.");
+            Assert.AreEqual(2, h.Progression.GetChargeCount(ChargeType.StrongCapture), "No charge consumed by base Capture.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter returns to Lured.");
         }
 
         [Test]
-        public void In_encounter_capture_drives_Acting_to_Resolving_to_Lured_around_the_atomic_write()
+        public void Base_capture_with_zero_charges_still_succeeds_because_it_is_free()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 1 });
-            h.Encounter.BeginLure(new[] { new AnchorToken("trk1", Vector3.zero, Quaternion.identity) });
-            h.Encounter.BeginAction(); // Acting
-            int savesBefore = h.Store.SaveCalls;
+            // AC-1: base Capture is FREE — zero charges does NOT block it (the semantics flip from the 4.1
+            // representative, which always consumed a charge).
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 0 });
+            h.Random.EnqueueDouble(WinDraw);
 
-            SpendResult result = h.Encounter.TryCaptureInEncounterAsync(MonsterId).GetAwaiter().GetResult();
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
 
             Assert.IsTrue(result.Success);
-            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A committed in-encounter action returns to Lured (the encounter continues).");
-            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "Still exactly ONE persist for the composed action.");
+            Assert.IsTrue(result.Captured, "A free base Capture works with zero charges.");
             Assert.IsTrue(h.Codex.IsDiscovered(MonsterId));
-            Assert.AreEqual(0, h.Progression.GetChargeCount(ChargeType.StrongCapture));
         }
 
         [Test]
-        public void In_encounter_capture_with_no_charge_fails_and_returns_to_Lured_for_retry()
+        public void Base_capture_MISS_records_nothing_does_not_persist_and_keeps_the_encounter_live()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 0 });
-            h.Encounter.BeginLure(Array.Empty<AnchorToken>());
-            h.Encounter.BeginAction(); // Acting
+            // AC-3: a base miss changes nothing (no charge, no discovery, no XP) → NO persist (save-count 0),
+            // OnMonsterDiscovered fires zero times, the encounter stays live for a free Retry.
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+            int discoveredBefore = h.Codex.DiscoveredCount;
+            h.Random.EnqueueDouble(LoseDraw); // base roll misses
 
-            SpendResult result = h.Encounter.TryCaptureInEncounterAsync(MonsterId).GetAwaiter().GetResult();
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "The attempt ran (a miss is a successful RUN).");
+            Assert.IsFalse(result.Captured, "A losing roll is a miss.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No discovery on a miss.");
+            Assert.AreEqual(discoveredBefore, h.Codex.DiscoveredCount, "X/67 unchanged on a miss.");
+            Assert.AreEqual(0, discoveryEvents, "No discovery event on a miss.");
+            Assert.AreEqual(xpBefore, h.Save.Current.Xp, "No XP on a miss.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing changed → NO persist (save-count 0).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "AC-3: the encounter stays live for a free Retry.");
+        }
+
+        [Test]
+        public void Strong_capture_success_consumes_exactly_one_charge_and_records_codex_and_xp_in_ONE_save()
+        {
+            // AC-2 + AC-4: a Strong Capture that WINS consumes EXACTLY one charge (never Credits), records the
+            // discovery + grants XP, in ONE save.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw);
+
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success);
+            Assert.IsTrue(result.Captured);
+            Assert.IsTrue(result.WasStrong);
+            Assert.IsTrue(result.ChargeConsumed, "Strong consumes a charge.");
+            Assert.AreEqual(0, result.RemainingCharges, "Exactly one charge consumed.");
+            Assert.AreEqual(0, h.Store.Stored.StrongCaptureCharges, "...and it persisted.");
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId));
+            Assert.AreEqual(xpBefore + h.Config.XpPerCapture, h.Save.Current.Xp, "AC-4: XP granted.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: ONE SaveAsync for charge + codex + XP.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "AC-2: never Credits.");
+        }
+
+        [Test]
+        public void Strong_capture_uses_a_strictly_higher_chance_than_base()
+        {
+            // AC-2 invariant (direct, tuner-proof): the Strong success chance strictly exceeds the base chance.
+            Assert.Greater(CaptureSystem.StrongCaptureChance, CaptureSystem.BaseCaptureChance,
+                "Strong Capture must apply a strictly higher success probability than the free base attempt.");
+        }
+
+        [Test]
+        public void The_capture_roll_is_real_consulted_from_random_not_hardcoded()
+        {
+            // Anti-tautology (E1): the SAME inputs with opposite draws produce opposite outcomes — proving the
+            // roll is actually read from IRandom (a hard-coded success=true would capture on the LoseDraw too).
+            var hWin = LuredHarness(new SaveModel { Credits = 10 });
+            hWin.Random.EnqueueDouble(WinDraw);
+            CaptureResult win = hWin.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            var hLose = LuredHarness(new SaveModel { Credits = 10 });
+            hLose.Random.EnqueueDouble(LoseDraw);
+            CaptureResult lose = hLose.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.IsTrue(win.Captured, "A winning draw captures.");
+            Assert.IsFalse(lose.Captured, "A losing draw misses — so the outcome tracks the real roll.");
+        }
+
+        [Test]
+        public void Strong_capture_with_zero_charges_is_blocked_never_negative_and_persists_nothing()
+        {
+            // AC-2: a Strong Capture with zero charges is blocked BEFORE any spend — typed InsufficientCharges,
+            // count never goes negative, no persist, no discovery, encounter stays live.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 0 });
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw); // even a winning roll must be blocked — no charge to spend
+
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "Blocked before the attempt ran.");
+            Assert.AreEqual(CaptureFailureReason.InsufficientCharges, result.FailureReason, "The 'earn via XP' block.");
+            Assert.AreEqual(0, h.Progression.GetChargeCount(ChargeType.StrongCapture), "Count never goes negative (stays 0).");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No discovery on a blocked Strong Capture.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist on a blocked action (save-count 0).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter stays live.");
+        }
+
+        [Test]
+        public void Strong_capture_MISS_still_consumes_the_charge_persists_once_and_records_no_discovery()
+        {
+            // AC-2 / Decision A (load-bearing): a Strong Capture that MISSES still consumes the charge (the
+            // charge bought the odds, win or lose), persists once (the charge decrement), but records NO
+            // discovery and grants NO XP, leaving the encounter live for a free Retry.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(LoseDraw); // Strong roll misses
+
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "The attempt ran (a miss is a successful RUN).");
+            Assert.IsFalse(result.Captured, "A losing Strong roll is a miss.");
+            Assert.IsTrue(result.ChargeConsumed, "Decision A: the charge is consumed even on a miss.");
+            Assert.AreEqual(0, h.Store.Stored.StrongCaptureCharges, "The charge decrement persisted.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No discovery on a miss.");
+            Assert.AreEqual(xpBefore, h.Save.Current.Xp, "No XP on a miss.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "ONE persist — the charge decrement (save-count 1).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "AC-3: live for a free Retry.");
+        }
+
+        [Test]
+        public void Base_capture_free_Retry_after_a_miss_succeeds_without_touching_credits_or_charges()
+        {
+            // AC-3: a base miss then a base retry (just call again) — the retry captures; Credits byte-identical
+            // across both attempts; no charge consumed on either.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            h.Random.EnqueueDouble(LoseDraw, WinDraw); // miss, then win
+
+            CaptureResult miss = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsFalse(miss.Captured, "First attempt misses.");
+
+            CaptureResult retry = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.IsTrue(retry.Captured, "The free Retry captures.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "Credits unchanged across both attempts (free Retry).");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "No charge consumed by base attempts.");
+        }
+
+        [Test]
+        public void Capture_persist_fault_rolls_back_charge_codex_and_xp_and_raises_no_events()
+        {
+            // NFR-3: a Strong-win persist fault reverts EVERY slice (charge, codex, XP) and raises no discovery
+            // event (events only after a committed write); a typed PersistenceFailed; encounter stays live.
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
+            int xpBefore = h.Save.Current.Xp;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+            h.Store.FailNextSave = true;
+            h.Random.EnqueueDouble(WinDraw);
+
+            LogAssert.ignoreFailingMessages = true;
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "A persist fault is a typed failure.");
+            Assert.AreEqual(CaptureFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "The charge is restored.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "The codex entry was NOT leaked.");
+            Assert.AreEqual(xpBefore, h.Save.Current.Xp, "XP rolled back.");
+            Assert.AreEqual(0, discoveryEvents, "No discovery event on a faulted (uncommitted) write.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A failed write keeps the encounter live (free Retry).");
+        }
+
+        [Test]
+        public void Capture_persist_fault_does_NOT_remove_a_pre_existing_codex_entry()
+        {
+            // Rollback fidelity: a Strong re-capture of an already-Captured Monster — the codex stage is a no-op
+            // (flag already set), but the CHARGE + XP still mutate + persist + fault, exercising the rollback. A
+            // naive Codex.Remove revert would delete the pre-existing entry → red.
+            var seed = new SaveModel { Credits = 10, StrongCaptureCharges = 1 };
+            seed.Codex[MonsterId] = new CodexEntryData { Captured = true, Discovered = "2026-06-01" };
+            var h = LuredHarness(seed);
+            h.Store.FailNextSave = true;
+            h.Random.EnqueueDouble(WinDraw);
+
+            LogAssert.ignoreFailingMessages = true;
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
 
             Assert.IsFalse(result.Success);
-            Assert.AreEqual(SpendFailureReason.InsufficientCharges, result.FailureReason);
-            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A failed action keeps the encounter live for a free Retry (FR-10).");
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The pre-existing entry survives the rollback (not removed).");
+            Assert.AreEqual("2026-06-01", h.Codex.GetEntry(MonsterId).Discovered, "Its first-discovered date is intact.");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "The charge is restored.");
         }
 
         [Test]
-        public void Invalid_monster_id_throws_a_programmer_error()
+        public void Capture_raises_the_discovery_event_on_a_committed_first_capture()
         {
-            var h = CreateHarness(new SaveModel { StrongCaptureCharges = 1 });
-            Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync("not-a-monster").GetAwaiter().GetResult());
-            Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync(null).GetAwaiter().GetResult());
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            string discovered = null;
+            h.Codex.OnMonsterDiscovered += id => discovered = id;
+            h.Random.EnqueueDouble(WinDraw);
+
+            h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+
+            Assert.AreEqual(MonsterId, discovered, "A committed first capture raises OnMonsterDiscovered.");
+        }
+
+        [Test]
+        public void Strong_capture_that_crosses_a_level_threshold_nets_the_consume_and_the_levelup_grant_in_ONE_save()
+        {
+            // Decision F': a Strong Capture both CONSUMES one Strong charge AND, by crossing a level threshold
+            // via the XP grant, is GRANTED level-up charges — netted on the SAME field, in ONE save. The harness
+            // rules grant 1 of each charge per level-up; thresholds are [100,200,300] and XpPerCapture is 10, so
+            // seed Xp = 95 → a 10-XP capture reaches 105 → crosses level 1 → grants +1 StrongCapture. Net: a
+            // seed of 1 charge, consume 1 (→0), grant 1 (→1).
+            var seed = new SaveModel { Credits = 10, StrongCaptureCharges = 1, Xp = 95, Level = 0 };
+            var h = LuredHarness(seed);
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw);
+
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Captured);
+            Assert.AreEqual(105, h.Save.Current.Xp, "XP granted (95 + 10).");
+            Assert.AreEqual(1, h.Save.Current.Level, "Crossed the first level threshold (100).");
+            Assert.AreEqual(1, h.Store.Stored.StrongCaptureCharges,
+                "Decision F': consumed 1 (Strong) then granted 1 (level-up) on the SAME field → net 1, persisted.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: still ONE SaveAsync for consume + discovery + XP + grant.");
+        }
+
+        [Test]
+        public void Strong_capture_crossing_a_level_threshold_raises_the_StrongCapture_event_exactly_once()
+        {
+            // CR patch (the duplicate-event fix): on a Strong WIN that crosses a level threshold (the consume and
+            // the level-up grant both touch StrongCapture), the authoritative ProgressionService.OnChargesChanged
+            // for StrongCapture must fire EXACTLY ONCE (reporting the net final value), not twice. A HUD counting
+            // deltas would double-process otherwise.
+            var seed = new SaveModel { Credits = 10, StrongCaptureCharges = 1, Xp = 95, Level = 0 };
+            var h = LuredHarness(seed);
+            int strongCaptureEvents = 0;
+            int lastReported = -1;
+            h.Progression.OnChargesChanged += (type, count) =>
+            {
+                if (type == ChargeType.StrongCapture)
+                {
+                    strongCaptureEvents++;
+                    lastReported = count;
+                }
+            };
+            h.Random.EnqueueDouble(WinDraw);
+
+            h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.AreEqual(1, strongCaptureEvents, "Exactly ONE StrongCapture charges-changed event (no duplicate).");
+            Assert.AreEqual(1, lastReported, "...reporting the NET final value (consumed 1, granted 1 → 1).");
+        }
+
+        [Test]
+        public void Capture_out_of_a_live_encounter_is_a_typed_NotSettled_failure_that_persists_nothing()
+        {
+            // Settles the 4.1 out-of-sequence deferral for Capture: a Capture with no live encounter (Idle) is
+            // NotSettled — NOT the misleading inherited PersistenceFailed+0 — and nothing persists.
+            var h = CreateHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 }); // Idle (no Lure)
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw);
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("no settled Monster"));
+            CaptureResult result = h.Encounter.TryCaptureAsync(MonsterId, strong: true).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(CaptureFailureReason.NotSettled, result.FailureReason, "Out-of-sequence Capture has a distinct reason.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing persisted.");
+            Assert.AreEqual(1, h.Progression.GetChargeCount(ChargeType.StrongCapture), "No charge consumed.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "State unchanged.");
+        }
+
+        [Test]
+        public void Capture_invalid_or_null_monster_id_throws_a_programmer_error()
+        {
+            var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
+            Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync("not-a-monster", strong: false).GetAwaiter().GetResult());
+            Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync(null, strong: true).GetAwaiter().GetResult());
         }
 
         // ---- AC-3: Suspended on interruption ----
@@ -751,8 +1013,10 @@ namespace Veilwalkers.Encounter.Tests
             Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "Scan did not discover.");
 
             // (2) Discover the Monster mid-encounter via a Capture (Lured → Acting → composed write → Lured).
-            h.Encounter.BeginAction();
-            h.Encounter.TryCaptureInEncounterAsync(MonsterId).GetAwaiter().GetResult();
+            // TryCaptureAsync drives BeginAction itself; enqueue a winning roll so the base Capture succeeds.
+            h.Random.EnqueueDouble(WinDraw);
+            CaptureResult capture = h.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            Assert.IsTrue(capture.Captured, "The Capture succeeded.");
             Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The Capture discovered the Monster.");
             Assert.IsFalse(h.Codex.GetEntry(MonsterId).Scanned, "But the persistent Scanned flag is not yet set.");
             int savesBeforeRescan = h.Store.SaveCalls;

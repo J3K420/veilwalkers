@@ -61,6 +61,11 @@ namespace Veilwalkers.Encounter
             _random = random ?? throw new ArgumentNullException(nameof(random));
         }
 
+        /// <summary>The injected <see cref="EconomyConfig"/> (the tunable economy values, AR-16). Exposed so the
+        /// <see cref="EncounterService"/> can read action XP/cost values without a duplicate config dependency —
+        /// the Lure system already holds the one injected instance.</summary>
+        public EconomyConfig Config => _config;
+
         /// <summary>The Credit cost of <paramref name="kind"/> — read from <see cref="EconomyConfig"/>
         /// (AR-16; never hard-coded).</summary>
         public int CostOf(LureKind kind)

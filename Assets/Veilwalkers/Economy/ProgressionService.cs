@@ -84,12 +84,8 @@ namespace Veilwalkers.Economy
             Result result;
             bool committed = false;
 
-            // Captured outside the lock scope so the post-release raise can use them.
-            int newXp = 0;
-            int priorLevel = 0;
-            int newLevel = 0;
-            var newCounts = new int[AllChargeTypes.Length];
-            var priorCounts = new int[AllChargeTypes.Length];
+            // The staged grant — captured outside the lock scope so the post-release raise can use it.
+            ProgressionStage stage = default;
 
             await _mutationLock.WaitAsync().ConfigureAwait(false);
             try
@@ -98,68 +94,20 @@ namespace Veilwalkers.Economy
                 // never make the rollback write stale values onto a NEW model.
                 SaveModel model = RequireModel();
 
-                int priorXp = model.Xp;
-                priorLevel = model.Level;
-                for (int i = 0; i < AllChargeTypes.Length; i++)
-                {
-                    priorCounts[i] = ChargeInventory.GetCount(model, AllChargeTypes[i]);
-                }
+                // Compute + apply the entire XP/level/charge-grant delta via the shared staging seam (Story
+                // 4.4 extracted this from AddXpAsync so the standalone XP path AND the composed Capture write
+                // share ONE arithmetic implementation). StageXpGrant does the checked arithmetic BEFORE any
+                // model write (overflow stays a clean programmer-error throw, model untouched, nothing to roll
+                // back), then writes the locals onto the model. From here a persist fault / recovery swap must
+                // restore the captured snapshot — stage.Revert() does that.
+                stage = StageXpGrant(model, amount);
 
-                // Compute the entire post-state into LOCALS first, mutating nothing on the
-                // model. All checked-arithmetic throws (XP overflow, charge-grant overflow)
-                // therefore fire BEFORE any model write — overflow stays a clean
-                // programmer-error throw (the documented contract) with the model
-                // untouched, so there is nothing to roll back. Only the persist (and the
-                // recovery-swap) below needs rollback.
-                checked
-                {
-                    newXp = priorXp + amount;
-                }
-
-                // Clamp to >= 0: XP only rises, but Level is stored as-earned (not
-                // derived on read), so a future threshold rebalance (Story 1.6) can
-                // leave stored Level > LevelForXp(Xp). Without the clamp the next add
-                // would compute a negative gain, decrease Level (this method must
-                // NEVER decrease it), and produce negative charge grants. The clamp
-                // makes "no level gained ⇒ no grant" the floor; a rebalance migration
-                // owns any re-leveling.
-                int levelsGained = Math.Max(0, _rules.LevelForXp(newXp) - priorLevel);
-
-                for (int i = 0; i < AllChargeTypes.Length; i++)
-                {
-                    int grantEach = _rules.GrantPerLevelUp(AllChargeTypes[i]);
-                    checked
-                    {
-                        newCounts[i] = priorCounts[i] + (grantEach * levelsGained);
-                    }
-                }
-
-                // Derive the committed level from the SAME clamped gain so Level is
-                // monotonic: a rebalance that lowered LevelForXp(Xp) below the stored
-                // level leaves Level unchanged rather than de-leveling the player.
-                newLevel = priorLevel + levelsGained;
-
-                // All arithmetic succeeded — now write the locals onto the model and
-                // persist. The rollback try opens here, around the mutate-and-persist
-                // span, because from this point a persist fault or a recovery swap must
-                // restore the full captured snapshot.
                 try
                 {
-                    model.Xp = newXp;
-                    for (int i = 0; i < AllChargeTypes.Length; i++)
-                    {
-                        ChargeInventory.SetCount(model, AllChargeTypes[i], newCounts[i]);
-                    }
-
-                    model.Level = newLevel;
-
                     await _saveService.SaveAsync().ConfigureAwait(false);
 
                     if (ReferenceEquals(_saveService.Current, model))
                     {
-                        // newXp / newCounts already hold the committed post-state (computed
-                        // into locals above and written verbatim to the model), so the
-                        // post-release event raise reads them directly.
                         committed = true;
                         result = Result.Ok();
                     }
@@ -167,7 +115,7 @@ namespace Veilwalkers.Economy
                     {
                         // A recovery swap replaced the model mid-operation: what
                         // SaveAsync persisted is not this XP grant.
-                        Rollback(model, priorXp, priorLevel, priorCounts);
+                        stage.Revert();
                         GameLog.Error(
                             $"ProgressionService: XP grant of {amount} rolled back — the save model was swapped mid-operation (recovery raced a mutation).");
                         result = Result.Fail("The XP grant could not be saved; progression is unchanged.");
@@ -178,8 +126,8 @@ namespace Veilwalkers.Economy
                     // Restore every captured field onto the captured reference — never
                     // recompute (anything else may have moved) and never re-read Current.
                     // This catch now covers only the persist fault (the mutate-span
-                    // overflow/guard throws happen above, before any model write).
-                    Rollback(model, priorXp, priorLevel, priorCounts);
+                    // overflow/guard throws happen in StageXpGrant, before any model write).
+                    stage.Revert();
                     GameLog.Error(
                         $"ProgressionService: XP grant of {amount} rolled back — persist failed. {ex.Message}");
                     result = Result.Fail("The XP grant could not be saved; progression is unchanged.");
@@ -192,22 +140,92 @@ namespace Veilwalkers.Economy
 
             if (committed)
             {
-                RaiseXpChanged(newXp);
-                if (newLevel != priorLevel)
-                {
-                    RaiseLevelChanged(newLevel);
-                }
-
-                for (int i = 0; i < AllChargeTypes.Length; i++)
-                {
-                    if (newCounts[i] != priorCounts[i])
-                    {
-                        RaiseChargesChanged(AllChargeTypes[i], newCounts[i]);
-                    }
-                }
+                stage.RaiseCommittedEvents();
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Compute + apply an XP grant's FULL delta (XP, level, per-level-up charge grants) onto
+        /// <paramref name="model"/> WITHOUT taking this service's lock and WITHOUT persisting — the staging
+        /// seam (the <see cref="CodexService"/> <c>StageDiscovery</c> precedent) the composed Encounter Capture
+        /// write (Story 4.4) uses so a successful Capture grants XP IN THE SAME single atomic save as the charge
+        /// consume + the Codex discovery (AR-8 — one persist per action). <see cref="AddXpAsync"/> composes this
+        /// too (DRY — ONE arithmetic implementation for both the standalone XP path and the composed path).
+        /// <para>
+        /// All checked arithmetic (XP overflow, charge-grant overflow) runs BEFORE any model write, so an
+        /// overflow throws cleanly with the model untouched (nothing to roll back). The returned
+        /// <see cref="ProgressionStage"/> captures the exact pre-mutation snapshot for <see cref="ProgressionStage.Revert"/>
+        /// (restore on a persist fault) and the post-mutation values for <see cref="ProgressionStage.RaiseCommittedEvents"/>
+        /// (raise XP/level/charge-changed AFTER the caller's persist commits + lock releases).
+        /// </para>
+        /// <para>
+        /// NOT lock-protected: the CALLER must hold the shared Economy <see cref="SaveMutationLock"/> around the
+        /// stage + persist span. Gameplay is single-threaded, so the standalone XP path and the composed writer
+        /// cannot actually interleave (the [[codex-service-lock-tier]] rationale).
+        /// </para>
+        /// </summary>
+        public ProgressionStage StageXpGrant(SaveModel model, int amount)
+        {
+            if (model == null)
+            {
+                throw new ArgumentNullException(nameof(model));
+            }
+
+            if (amount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(amount), amount, "An XP grant must be a positive integer.");
+            }
+
+            int priorXp = model.Xp;
+            int priorLevel = model.Level;
+            var priorCounts = new int[AllChargeTypes.Length];
+            for (int i = 0; i < AllChargeTypes.Length; i++)
+            {
+                priorCounts[i] = ChargeInventory.GetCount(model, AllChargeTypes[i]);
+            }
+
+            // Compute the entire post-state into LOCALS first, mutating nothing on the model. All
+            // checked-arithmetic throws fire BEFORE any model write (the model stays untouched on overflow —
+            // a clean programmer-error throw with nothing to roll back).
+            int newXp;
+            checked
+            {
+                newXp = priorXp + amount;
+            }
+
+            // Clamp to >= 0: XP only rises, but Level is stored as-earned (not derived on read), so a future
+            // threshold rebalance (Story 1.6) can leave stored Level > LevelForXp(Xp). Without the clamp the
+            // next add would compute a negative gain, decrease Level (this must NEVER decrease it), and produce
+            // negative charge grants. The clamp makes "no level gained ⇒ no grant" the floor.
+            int levelsGained = Math.Max(0, _rules.LevelForXp(newXp) - priorLevel);
+
+            var newCounts = new int[AllChargeTypes.Length];
+            for (int i = 0; i < AllChargeTypes.Length; i++)
+            {
+                int grantEach = _rules.GrantPerLevelUp(AllChargeTypes[i]);
+                checked
+                {
+                    newCounts[i] = priorCounts[i] + (grantEach * levelsGained);
+                }
+            }
+
+            // Derive the committed level from the SAME clamped gain so Level is monotonic.
+            int newLevel = priorLevel + levelsGained;
+
+            // All arithmetic succeeded — write the locals onto the model. From here a persist fault / recovery
+            // swap must restore the captured snapshot (stage.Revert()).
+            model.Xp = newXp;
+            for (int i = 0; i < AllChargeTypes.Length; i++)
+            {
+                ChargeInventory.SetCount(model, AllChargeTypes[i], newCounts[i]);
+            }
+
+            model.Level = newLevel;
+
+            return ProgressionStage.Create(this, model, priorXp, priorLevel, priorCounts, newXp, newLevel, newCounts);
         }
 
         /// <inheritdoc />
@@ -432,6 +450,107 @@ namespace Veilwalkers.Economy
             }
 
             return model;
+        }
+
+        /// <summary>
+        /// A staged-but-not-persisted XP grant produced by <see cref="StageXpGrant"/>, for the standalone
+        /// <see cref="AddXpAsync"/> path AND the Story 4.4 composed Encounter Capture write. The caller holds
+        /// this between mutating the model and the single <c>SaveService.SaveAsync</c>: on a persist FAULT it
+        /// calls <see cref="Revert"/> (restores the EXACT pre-mutation XP/level/charge snapshot); on a COMMIT it
+        /// raises the XP/level/charge-changed events via <see cref="RaiseCommittedEvents"/> (after the persist
+        /// commits + the shared lock releases). A nested type so it can reach the private
+        /// <see cref="Rollback"/>/event raisers — the progression rules stay in ProgressionService (one home).
+        /// </summary>
+        public readonly struct ProgressionStage
+        {
+            private readonly ProgressionService _service;
+            private readonly SaveModel _model;
+            private readonly int _priorXp;
+            private readonly int _priorLevel;
+            private readonly int[] _priorCounts;
+            private readonly int _newXp;
+            private readonly int _newLevel;
+            private readonly int[] _newCounts;
+
+            private ProgressionStage(
+                ProgressionService service, SaveModel model, int priorXp, int priorLevel, int[] priorCounts,
+                int newXp, int newLevel, int[] newCounts)
+            {
+                _service = service;
+                _model = model;
+                _priorXp = priorXp;
+                _priorLevel = priorLevel;
+                _priorCounts = priorCounts;
+                _newXp = newXp;
+                _newLevel = newLevel;
+                _newCounts = newCounts;
+            }
+
+            internal static ProgressionStage Create(
+                ProgressionService service, SaveModel model, int priorXp, int priorLevel, int[] priorCounts,
+                int newXp, int newLevel, int[] newCounts) =>
+                new ProgressionStage(service, model, priorXp, priorLevel, priorCounts, newXp, newLevel, newCounts);
+
+            /// <summary>Restore the EXACT pre-mutation XP/level/charge snapshot onto the captured reference on a
+            /// persist fault (the same restore <see cref="Rollback"/> performs). The composed write calls this
+            /// inside its rollback path, alongside reverting any other slice (e.g. a Capture's charge consume).</summary>
+            public void Revert()
+            {
+                if (_service == null)
+                {
+                    return; // a default(ProgressionStage) — nothing was staged.
+                }
+
+                Rollback(_model, _priorXp, _priorLevel, _priorCounts);
+            }
+
+            /// <summary>True if this committed grant CHANGED the count for <paramref name="type"/> (i.e.
+            /// <see cref="RaiseCommittedEvents"/> will raise <c>OnChargesChanged</c> for it) — a level-up granted
+            /// charges of that type. A composed caller that ALSO mutates the same charge (e.g. a Capture consuming
+            /// a StrongCapture charge) queries this to avoid raising a SECOND, duplicate charges-changed event for
+            /// the same final value (the XP stage's event is authoritative for the net). False on a default stage.</summary>
+            public bool ChargesChangedFor(ChargeType type)
+            {
+                if (_service == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < AllChargeTypes.Length; i++)
+                {
+                    if (AllChargeTypes[i] == type)
+                    {
+                        return _newCounts[i] != _priorCounts[i];
+                    }
+                }
+
+                return false;
+            }
+
+            /// <summary>Raise the XP/level/charge-changed events for a COMMITTED grant — the caller invokes this
+            /// AFTER its single persist commits and the shared lock is released. Only raises the events that
+            /// actually changed (the standalone <see cref="AddXpAsync"/> behavior, preserved verbatim).</summary>
+            public void RaiseCommittedEvents()
+            {
+                if (_service == null)
+                {
+                    return;
+                }
+
+                _service.RaiseXpChanged(_newXp);
+                if (_newLevel != _priorLevel)
+                {
+                    _service.RaiseLevelChanged(_newLevel);
+                }
+
+                for (int i = 0; i < AllChargeTypes.Length; i++)
+                {
+                    if (_newCounts[i] != _priorCounts[i])
+                    {
+                        _service.RaiseChargesChanged(AllChargeTypes[i], _newCounts[i]);
+                    }
+                }
+            }
         }
     }
 }

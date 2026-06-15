@@ -274,9 +274,11 @@ namespace Veilwalkers.App
                 // LureSystem needs it for the rarity roll, EncounterService needs the CodexService built over
                 // it. To close the seam once MonsterDatabase.asset + CodexService land:
                 // `var lureSystem = new LureSystem(_economyConfig, monsterDatabase, random);`
+                // `var captureSystem = new CaptureSystem(random);` (Story 4.4 — the Capture success roll; reuses
+                //   the SAME IRandom instance as LureSystem) then
                 // `var encounterService = new EncounterService(saveService, creditService, progressionService,
                 //   codexService, economyMutationLock, anchorRestoreService, arSessionService,
-                //   lureSystem, planeAnchorService, monsterSpawner);` then
+                //   lureSystem, planeAnchorService, monsterSpawner, captureSystem);` then
                 // `GameServices.Register<EncounterService>(encounterService);`. CRITICAL: pass the SAME
                 // economyMutationLock constructed above (shared with CreditService/ProgressionService) — the
                 // composed Encounter write MUST serialize against plain Economy writes (that is the whole point
