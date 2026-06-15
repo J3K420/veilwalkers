@@ -164,5 +164,75 @@ namespace Veilwalkers.Encounter.Tests
 
             Assert.Throws<InvalidOperationException>(() => sut.RollMonster(LureKind.Basic));
         }
+
+        // ---- Story 5.3: GuaranteedRare — zero cost, forced Rare-or-better, no common fallback ----
+
+        [Test]
+        public void GuaranteedRare_costs_zero_and_spawns_one()
+        {
+            var sut = new LureSystem(DefaultConfig(), SeededDb(), new FakeRandom());
+
+            Assert.AreEqual(0, sut.CostOf(LureKind.GuaranteedRare),
+                "AC-2: the Guaranteed-Rare Lure costs ZERO Credits (the Veil pack already paid).");
+            Assert.AreEqual(1, sut.MonsterCountOf(LureKind.GuaranteedRare), "GuaranteedRare spawns one Monster.");
+        }
+
+        [Test]
+        public void TryRollGuaranteedRare_only_ever_returns_a_rare_or_better_monster()
+        {
+            // Index 0 → mon02 (Rare), index 1 → mon03 (Epic) — both >= the floor. The below-Rare mon01 is NOT
+            // in the rare-or-better subset, so it can NEVER be picked (no common fallback). Run both indices.
+            MonsterDatabase db = SeededDb();
+
+            var rng0 = new FakeRandom().EnqueueNext(0);
+            var sut0 = new LureSystem(DefaultConfig(), db, rng0);
+            Assert.IsTrue(sut0.TryRollGuaranteedRare(out string id0));
+            Assert.AreEqual("mon02", id0, "Index 0 of the rare-or-better subset is mon02 (Rare).");
+
+            var rng1 = new FakeRandom().EnqueueNext(1);
+            var sut1 = new LureSystem(DefaultConfig(), db, rng1);
+            Assert.IsTrue(sut1.TryRollGuaranteedRare(out string id1));
+            Assert.AreEqual("mon03", id1, "Index 1 of the rare-or-better subset is mon03 (Epic) — never the Common mon01.");
+        }
+
+        [Test]
+        public void TryRollGuaranteedRare_never_returns_a_common_even_under_many_draws()
+        {
+            // Exhaustively confirm the guarantee: across every index the FakeRandom can hand back, the result is
+            // always Rarity >= Rare (never the Common mon01). A mutation that included the below-Rare side would
+            // surface mon01 here.
+            MonsterDatabase db = SeededDb();
+            for (int i = 0; i < 12; i++)
+            {
+                var sut = new LureSystem(DefaultConfig(), db, new FakeRandom().EnqueueNext(i));
+                Assert.IsTrue(sut.TryRollGuaranteedRare(out string id), "A mixed roster always honors the guarantee.");
+                Assert.AreNotEqual("mon01", id, "AC-2: a Guaranteed-Rare Lure NEVER spawns the below-Rare Common.");
+            }
+        }
+
+        [Test]
+        public void TryRollGuaranteedRare_reports_failure_on_a_common_only_roster_without_throwing()
+        {
+            // A content error: no Rare+ Monster. The guarantee cannot be honored → a TYPED false (never a throw,
+            // never a silent Common spawn). The caller keeps the player's lure.
+            var commonOnly = ScriptableObject.CreateInstance<MonsterDatabase>();
+            commonOnly.SetForTests(new[] { Def("mon01", Rarity.Common), Def("mon09", Rarity.Uncommon) });
+            var sut = new LureSystem(DefaultConfig(), commonOnly, new FakeRandom().EnqueueNext(0));
+
+            Assert.IsFalse(sut.TryRollGuaranteedRare(out string id),
+                "AC-2: no Rare+ in the roster → a typed failure, NOT a silent Common spawn.");
+            Assert.IsNull(id);
+        }
+
+        [Test]
+        public void TryRollGuaranteedRare_reports_failure_on_an_empty_database()
+        {
+            var empty = ScriptableObject.CreateInstance<MonsterDatabase>();
+            empty.SetForTests(Array.Empty<MonsterDefinition>());
+            var sut = new LureSystem(DefaultConfig(), empty, new FakeRandom());
+
+            Assert.IsFalse(sut.TryRollGuaranteedRare(out string id), "Nothing to Lure → typed false, never a throw.");
+            Assert.IsNull(id);
+        }
     }
 }

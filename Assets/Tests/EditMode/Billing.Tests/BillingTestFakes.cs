@@ -134,6 +134,9 @@ namespace Veilwalkers.Billing.Tests
                 StrongCaptureCharges = model.StrongCaptureCharges,
                 StabilityBoostCharges = model.StabilityBoostCharges,
                 NightveilFilterCharges = model.NightveilFilterCharges,
+                // Story 5.3: the one-shot Guaranteed-Rare Lure counter must be deep-copied so a grant is
+                // observable on the stored copy WITHOUT aliasing the live model ([[tautological-test-trap]]).
+                GuaranteedRareLures = model.GuaranteedRareLures,
                 DailyClaim = model.DailyClaim,
                 FirstZeroCreditDay = model.FirstZeroCreditDay,
                 Codex = model.Codex == null

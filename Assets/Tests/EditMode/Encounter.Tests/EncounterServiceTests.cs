@@ -74,7 +74,9 @@ namespace Veilwalkers.Encounter.Tests
             return def;
         }
 
-        private static Harness CreateHarness(SaveModel seed)
+        private static Harness CreateHarness(SaveModel seed) => CreateHarnessWithDb(seed, SeededDb());
+
+        private static Harness CreateHarnessWithDb(SaveModel seed, MonsterDatabase db)
         {
             var store = new FakeEncounterProgressStore { Stored = seed };
             var save = new SaveService(store);
@@ -86,7 +88,6 @@ namespace Veilwalkers.Encounter.Tests
             var rules = new ProgressionRules(new[] { 100, 200, 300 }, 1, 1, 1);
             var progression = new ProgressionService(save, rules, mutationLock);
 
-            var db = SeededDb();
             var codex = new CodexService(save, db, new FakeClock(FixedNow));
 
             var anchorProvider = new FakeArAnchorProvider();
@@ -1737,6 +1738,153 @@ namespace Veilwalkers.Encounter.Tests
             Assert.AreEqual(discoveredBefore, h.Codex.DiscoveredCount, "An extra does NOT discover a Monster (X/67 unchanged).");
             Assert.AreEqual(0, discoveryEvents, "An extra raises NO discovery event.");
             Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No Codex key created by an extra.");
+        }
+
+        // ---- Story 5.3: the Guaranteed-Rare Lure consume through the existing Lure path ----
+
+        [Test]
+        public void GuaranteedRare_lure_consumes_one_spawns_rare_or_better_spends_no_credits()
+        {
+            // AC-2: a GuaranteedRare Lure routes through TryLureAsync, consumes ONE one-shot item (NOT Credits),
+            // spawns a Rarity >= Rare Monster, and moves Idle → Lured. Next(0) picks the first of the rare-or-
+            // better subset {mon02 Rare, mon03 Epic} → mon02.
+            var h = CreateHarness(new SaveModel { Credits = 7, GuaranteedRareLures = 1 });
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueNext(0); // the rare-or-better subset pick
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "A GuaranteedRare Lure with an item + a plane succeeds.");
+            Assert.AreEqual(7, h.Store.Stored.Credits, "AC-2: NO Credits spent (cost 0).");
+            Assert.AreEqual(0, h.Store.Stored.GuaranteedRareLures, "AC-2: the one-shot item is consumed (1 → 0).");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: exactly ONE persist for the consume.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "Idle → Lured.");
+
+            string spawned = result.SpawnedMonsterIds[0];
+            Assert.IsTrue(h.Db.TryGet(spawned, out MonsterDefinition def), "The spawned id resolves in the roster.");
+            Assert.GreaterOrEqual((int)def.Rarity, (int)RarityThresholds.GuaranteedRareFloor,
+                "AC-2: the spawned Monster is Rare-or-better.");
+        }
+
+        [Test]
+        public void GuaranteedRare_lure_with_no_item_is_NoGuaranteedRareLure_and_raises_no_insufficient_credits()
+        {
+            // AC-2 exactly-once: with zero inventory, the second-or-first attempt is a typed NoGuaranteedRareLure
+            // failure — NOT a credit shortfall — that consumes nothing, persists nothing, spawns nothing, and
+            // does NOT raise OnInsufficientCredits (Decision H — you cannot buy a single lure; no top-up sheet).
+            var h = CreateHarness(new SaveModel { Credits = 100, GuaranteedRareLures = 0 });
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueNext(0);
+            int savesBefore = h.Store.SaveCalls;
+            int insufficientEvents = 0;
+            h.Encounter.OnInsufficientCredits += _ => insufficientEvents++;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(LureFailureReason.NoGuaranteedRareLure, result.FailureReason,
+                "AC-2: zero inventory → NoGuaranteedRareLure, NOT InsufficientCredits.");
+            Assert.AreEqual(0, h.Store.Stored.GuaranteedRareLures, "Never decrements below zero.");
+            Assert.AreEqual(100, h.Store.Stored.Credits, "No Credits touched.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist on a zero-inventory consume.");
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "No monster spawned.");
+            Assert.AreEqual(0, insufficientEvents, "Decision H: OnInsufficientCredits is NOT raised (not a credit shortfall).");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "The world does not lock — stays Idle.");
+        }
+
+        [Test]
+        public void GuaranteedRare_lure_with_no_plane_does_not_consume_the_item()
+        {
+            // AC-2: a NoPlacement block costs nothing — the player keeps the one-shot item ([[failure-path-cleanup-parity]]).
+            var h = CreateHarness(new SaveModel { GuaranteedRareLures = 1 });
+            h.AnchorProvider.AvailablePlacements = 0; // no plane
+            h.Random.EnqueueNext(0);
+            int savesBefore = h.Store.SaveCalls;
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(LureFailureReason.NoPlacement, result.FailureReason);
+            Assert.AreEqual(1, h.Store.Stored.GuaranteedRareLures, "AC-2: a no-placement block does NOT burn the lure.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist at all.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State);
+        }
+
+        [Test]
+        public void GuaranteedRare_lure_refunds_the_item_when_the_spawn_is_refused()
+        {
+            // AC-2: a spawn refused AFTER the consume refunds the one-shot item (counter restored) — the
+            // "no charge without a spawn" parity. Fill the spawner to its cap so the post-consume TrySpawn fails.
+            var h = CreateHarness(new SaveModel { GuaranteedRareLures = 1 });
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueNext(0);
+
+            // Saturate the pool to its cap so the Lure's post-consume spawn activation is refused.
+            var fillPose = new Pose(Vector3.zero, Quaternion.identity);
+            for (int i = 0; i < h.Spawner.MaxConcurrent; i++)
+            {
+                Assert.IsTrue(h.Spawner.TrySpawn(in fillPose, out _), "Precondition: fill the pool to its cap.");
+            }
+
+            LogAssert.ignoreFailingMessages = true; // the refund path warns
+            LureResult result = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "The spawn was refused post-consume.");
+            Assert.AreEqual(LureFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(1, h.Store.Stored.GuaranteedRareLures,
+                "AC-2: the one-shot item is REFUNDED on a spawn refusal — never burned without a spawn.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "Aborted back to Idle.");
+        }
+
+        [Test]
+        public void GuaranteedRare_lure_keeps_the_item_when_the_roster_has_no_rare()
+        {
+            // AC-2 / Decision G: a roster with no Rare+ Monster cannot honor the guarantee → block with the
+            // distinct GuaranteedRareUnavailable reason (NOT PersistenceFailed, NOT NoGuaranteedRareLure), the
+            // player KEEPS the lure (the consume is refunded), log loudly, never spawn a Common.
+            var commonOnly = ScriptableObject.CreateInstance<MonsterDatabase>();
+            commonOnly.SetForTests(new[] { MakeDef("mon01", Rarity.Common), MakeDef("mon09", Rarity.Uncommon) });
+            var h = CreateHarnessWithDb(new SaveModel { GuaranteedRareLures = 1 }, commonOnly);
+            h.AnchorProvider.AvailablePlacements = 1;
+            h.Random.EnqueueNext(0);
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("no Rare-or-better Monster"));
+
+            LureResult result = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success, "An empty rare-pool blocks the Lure.");
+            Assert.AreEqual(LureFailureReason.GuaranteedRareUnavailable, result.FailureReason,
+                "AC-2 / Decision G: a roster that cannot honor the guarantee is a distinct typed reason, NOT a persist fault.");
+            Assert.AreEqual(1, h.Store.Stored.GuaranteedRareLures,
+                "Decision G: the player keeps the lure on a roster bug (the consume is refunded).");
+            Assert.AreEqual(0, h.SpawnSink.LiveCount, "Never a silent Common spawn.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "The world does not lock — stays Idle.");
+        }
+
+        [Test]
+        public void GuaranteedRare_blocked_attempt_does_not_consume_an_rng_draw()
+        {
+            // CR fix: the forced roll is DEFERRED past placement + the consume, so a BLOCKED attempt spends NO
+            // RNG draw (the shared random stream is untouched). Prove it across TWO attempts on ONE harness
+            // sharing ONE FakeRandom: enqueue a SINGLE Next(1) draw. The first attempt is blocked on NoPlacement
+            // (no plane) — if the (now-removed) up-front roll were still there it would have consumed the draw.
+            // The second attempt (a plane available) then uses that SAME surviving draw → index 1 → mon03 (Epic).
+            // Were the draw wasted by attempt 1, attempt 2 would default to index 0 → mon02 — so this is falsifiable.
+            var h = CreateHarness(new SaveModel { GuaranteedRareLures = 2 });
+            h.Random.EnqueueNext(1); // ONE draw → the rare-or-better subset index 1 (mon03)
+
+            h.AnchorProvider.AvailablePlacements = 0; // no plane → the first attempt blocks on NoPlacement
+            LureResult blocked = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+            Assert.AreEqual(LureFailureReason.NoPlacement, blocked.FailureReason, "Precondition: blocked before any consume/roll.");
+            Assert.AreEqual(2, h.Store.Stored.GuaranteedRareLures, "A NoPlacement block consumes nothing.");
+
+            h.AnchorProvider.AvailablePlacements = 1; // now a plane is available
+            LureResult ok = h.Encounter.TryLureAsync(LureKind.GuaranteedRare).GetAwaiter().GetResult();
+            Assert.IsTrue(ok.Success);
+            Assert.AreEqual("mon03", ok.SpawnedMonsterIds[0],
+                "The deferred roll used the draw the blocked attempt did NOT waste (index 1 → mon03).");
+            Assert.AreEqual(1, h.Store.Stored.GuaranteedRareLures, "Exactly one consumed across the two attempts.");
         }
     }
 }

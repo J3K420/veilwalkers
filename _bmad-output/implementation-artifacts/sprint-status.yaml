@@ -37,7 +37,7 @@
 generated: 2026-06-10
 last_updated: 2026-06-15
 # epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
-# epic-5 in-progress — 5.1, 5.2 done (2026-06-15); next: 5.3 (Guaranteed-Rare Lure grant/consume)
+# epic-5 in-progress — 5.1, 5.2, 5.3 done (2026-06-15); next: 5.4 (top-up mid-encounter)
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -90,7 +90,7 @@ development_status:
   epic-5: in-progress
   5-1-browse-and-purchase-credit-packs-via-google-play-billing: done
   5-2-reconcile-purchases-exactly-once: done
-  5-3-grant-and-consume-the-guaranteed-rare-lure: backlog
+  5-3-grant-and-consume-the-guaranteed-rare-lure: done
   5-4-top-up-mid-encounter-without-losing-the-encounter: backlog
   epic-5-retrospective: optional
 

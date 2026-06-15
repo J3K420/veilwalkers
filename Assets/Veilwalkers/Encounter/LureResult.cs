@@ -33,6 +33,25 @@ namespace Veilwalkers.Encounter
         /// from <see cref="NoPlacement"/> so a UI shows "busy / finish your encounter," NOT plane coaching.
         /// </summary>
         AlreadyActive = 4,
+
+        /// <summary>
+        /// A Guaranteed-Rare Lure (<see cref="LureKind.GuaranteedRare"/>) was attempted with NO one-shot
+        /// Guaranteed-Rare Lure in inventory (<c>SaveModel.GuaranteedRareLures == 0</c>) — Story 5.3. Nothing
+        /// was consumed. DISTINCT from <see cref="InsufficientCredits"/>: this is "you own no Guaranteed-Rare
+        /// Lures," NOT a credit shortfall — a UI must NOT show the credit top-up sheet (you cannot buy a single
+        /// lure, only the Veil pack); <see cref="EncounterService.OnInsufficientCredits"/> is NOT raised.
+        /// </summary>
+        NoGuaranteedRareLure = 5,
+
+        /// <summary>
+        /// A Guaranteed-Rare Lure could not be honored because the Monster roster contains NO Rarity-Rare-or-
+        /// better entry (Story 5.3, Decision G) — a CONTENT/roster error that should never ship (the MVP roster
+        /// must contain at least one Rare+). Nothing was consumed (the player keeps the lure). DISTINCT from
+        /// <see cref="PersistenceFailed"/> (no save/disk fault occurred) and <see cref="NoGuaranteedRareLure"/>
+        /// (the player DOES own a lure) — so telemetry/UI can tell a roster bug apart from an I/O fault or an
+        /// empty inventory. Logged loudly (<c>GameLog.Error</c>); never a silent Common spawn.
+        /// </summary>
+        GuaranteedRareUnavailable = 6,
     }
 
     /// <summary>

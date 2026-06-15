@@ -68,6 +68,17 @@ namespace Veilwalkers.Persistence
         public int NightveilFilterCharges { get; set; }
 
         /// <summary>
+        /// Remaining one-shot Guaranteed-Rare Lures (Story 5.3). Granted ONLY by a Veil Pack purchase
+        /// (<c>PurchaseReconciler</c>), never XP-earned. Consumed one per Guaranteed-Rare Lure
+        /// (<c>LureKind.GuaranteedRare</c>). A purchased one-shot item, NOT an XP-charge — distinct from the
+        /// StrongCapture/StabilityBoost/NightveilFilter counters (which are leveled into). Not a collection;
+        /// <see cref="CoerceNullCollections"/> does not touch it. Additive field: an existing save that lacks
+        /// the JSON property deserializes to 0 ("owns none"), so no schema-version bump / migration is needed
+        /// (the charge-counter precedent).
+        /// </summary>
+        public int GuaranteedRareLures { get; set; }
+
+        /// <summary>
         /// The interrupted-encounter snapshot, or null when no encounter is active.
         /// This is the Persistence-owned data-only shape; the behavior-bearing
         /// <c>EncounterSnapshot</c> (Encounter tier, Epic 4) maps to/from it.

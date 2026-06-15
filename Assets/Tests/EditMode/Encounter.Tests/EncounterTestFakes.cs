@@ -115,6 +115,9 @@ namespace Veilwalkers.Encounter.Tests
                 StrongCaptureCharges = model.StrongCaptureCharges,
                 StabilityBoostCharges = model.StabilityBoostCharges,
                 NightveilFilterCharges = model.NightveilFilterCharges,
+                // Story 5.3: deep-copy the one-shot Guaranteed-Rare Lure counter so a consume/refund is
+                // observable on the stored copy WITHOUT aliasing the live model ([[tautological-test-trap]]).
+                GuaranteedRareLures = model.GuaranteedRareLures,
                 DailyClaim = model.DailyClaim,
                 FirstZeroCreditDay = model.FirstZeroCreditDay,
                 Codex = new Dictionary<string, CodexEntryData>(),

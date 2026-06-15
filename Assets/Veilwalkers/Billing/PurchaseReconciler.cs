@@ -344,8 +344,11 @@ namespace Veilwalkers.Billing
                 }
 
                 // Advance to Granted and PERSIST before acknowledging — the persisted state is what prevents a
-                // re-grant after an app-kill between the grant and the acknowledge.
-                if (!await AdvanceToGrantedAsync(orderId).ConfigureAwait(false))
+                // re-grant after an app-kill between the grant and the acknowledge. Story 5.3: a Veil pack also
+                // grants ONE one-shot Guaranteed-Rare Lure, folded into THIS same write so the persisted Granted
+                // state is the exactly-once envelope for the lure too (a Granted record has, by definition,
+                // already granted both the Credits AND the lure — the order-id dedup covers it for free).
+                if (!await AdvanceToGrantedAsync(orderId, pack.IncludesGuaranteedRareLure).ConfigureAwait(false))
                 {
                     // The state-advance persist faulted. The Credits ARE granted (the grant above committed),
                     // but the record is still PendingGrant on disk. We MUST NOT re-grant on the next pass, yet
@@ -445,7 +448,15 @@ namespace Veilwalkers.Billing
             }
         }
 
-        private async Task<bool> AdvanceToGrantedAsync(string orderId)
+        /// <summary>
+        /// Advance the record to <see cref="StateGranted"/> and persist (the exactly-once envelope). Story 5.3:
+        /// when <paramref name="grantGuaranteedRareLure"/> is true (a Veil pack), ALSO increment
+        /// <c>SaveModel.GuaranteedRareLures</c> in this SAME write — so the persisted <c>Granted</c> state guards
+        /// the one-shot lure exactly as it guards the Credits (a kill after this commit never re-grants either;
+        /// a kill BEFORE it re-runs the whole grant, granting the lure exactly once per <c>Granted</c>
+        /// transition). Both deltas roll back together on a swap/persist fault.
+        /// </summary>
+        private async Task<bool> AdvanceToGrantedAsync(string orderId, bool grantGuaranteedRareLure)
         {
             await _mutationLock.WaitAsync().ConfigureAwait(false);
             try
@@ -458,16 +469,31 @@ namespace Veilwalkers.Billing
                 }
 
                 string priorState = record.State;
+                int priorLures = model.GuaranteedRareLures;
                 record.State = StateGranted;
+                if (grantGuaranteedRareLure)
+                {
+                    model.GuaranteedRareLures = priorLures + 1;
+                }
+
                 try
                 {
                     await _saveService.SaveAsync().ConfigureAwait(false);
                     if (ReferenceEquals(_saveService.Current, model))
                     {
+                        if (grantGuaranteedRareLure)
+                        {
+                            GameLog.Info(
+                                $"PurchaseReconciler: granted 1 Guaranteed-Rare Lure for order {orderId} " +
+                                $"(now {model.GuaranteedRareLures}).");
+                        }
+
                         return true;
                     }
 
+                    // Roll BOTH deltas back together onto the captured ref (the swap-branch contract).
                     record.State = priorState;
+                    model.GuaranteedRareLures = priorLures;
                     GameLog.Warn(
                         "PurchaseReconciler: Granted-state advance rolled back — the save model was swapped " +
                         "mid-operation (recovery raced a mutation).");
@@ -476,6 +502,7 @@ namespace Veilwalkers.Billing
                 catch (Exception ex)
                 {
                     record.State = priorState;
+                    model.GuaranteedRareLures = priorLures;
                     GameLog.Error(
                         $"PurchaseReconciler: failed to persist the Granted state for order {orderId} — {ex.Message}.");
                     return false;

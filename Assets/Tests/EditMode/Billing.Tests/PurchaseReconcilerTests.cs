@@ -343,5 +343,64 @@ namespace Veilwalkers.Billing.Tests
             Assert.Throws<ArgumentNullException>(() => new PurchaseReconciler(save, mutationLock, credits, catalog, null, clock));
             Assert.Throws<ArgumentNullException>(() => new PurchaseReconciler(save, mutationLock, credits, catalog, adapter, null));
         }
+
+        // ---------- Story 5.3: the Guaranteed-Rare Lure grant (gated on the Veil flag, exactly once) ----------
+
+        [Test]
+        public void Veil_purchase_grants_one_guaranteed_rare_lure_alongside_the_credits()
+        {
+            // AC-1: a Veil purchase grants Credits (500) AND one Guaranteed-Rare Lure, BOTH committed (the lure
+            // rides the same Granted-state write as the Credits).
+            var rig = BuildRig(startingCredits: 0);
+
+            rig.Reconciler.ReconcilePurchaseAsync("order-veil", CreditPackCatalog.VeilPackId)
+                .GetAwaiter().GetResult();
+
+            Assert.AreEqual(500, rig.Credits.Balance, "AC-1: the Veil pack total (400 + 100) was granted.");
+            Assert.AreEqual(1, rig.Store.Stored.GuaranteedRareLures,
+                "AC-1: a Veil purchase grants exactly one one-shot Guaranteed-Rare Lure, persisted.");
+            Assert.AreEqual(0, rig.Store.Stored.PendingPurchases.Count, "Cleared after ack.");
+        }
+
+        [Test]
+        public void A_non_veil_purchase_grants_no_guaranteed_rare_lure()
+        {
+            // AC-1: Starter/Hunter packs do NOT include the Guaranteed-Rare Lure (the flag is false) — the
+            // one-shot counter is untouched.
+            var rig = BuildRig(startingCredits: 0);
+
+            rig.Reconciler.ReconcilePurchaseAsync("order-hunter", CreditPackCatalog.HunterPackId)
+                .GetAwaiter().GetResult();
+
+            Assert.AreEqual(170, rig.Credits.Balance, "The Hunter total (150 + 20) was granted.");
+            Assert.AreEqual(0, rig.Store.Stored.GuaranteedRareLures,
+                "AC-1: a non-Veil pack grants NO Guaranteed-Rare Lure (the flag is false).");
+        }
+
+        [Test]
+        public void A_granted_veil_record_is_never_re_granted_a_second_lure()
+        {
+            // AC-1 exactly-once across interruption (the load-bearing pin): a Granted Veil record (the lure was
+            // already granted on the prior run, reflected in the seed) re-passes and grants NEITHER a second
+            // lure NOR second Credits. Simulate the app-kill the 5.2 way: a Granted record + the prior balance
+            // + the prior lure count, a fresh launch pass over the same stored model.
+            var seed = new SaveModel { Credits = 500, GuaranteedRareLures = 1 };
+            seed.PendingPurchases.Add(
+                Record("order-veil-acked-later", CreditPackCatalog.VeilPackId, PurchaseReconciler.StateGranted));
+            var store = new FakeBillingProgressStore { Stored = seed };
+            var save = new SaveService(store);
+            save.InitializeAsync().GetAwaiter().GetResult();
+            var mutationLock = new SaveMutationLock();
+            var credits = new CreditService(save, mutationLock);
+            var adapter = new FakeStoreAdapter();
+            var reconciler = new PurchaseReconciler(save, mutationLock, credits, new CreditPackCatalog(), adapter, new FakeClock());
+
+            reconciler.ReconcilePendingOnLaunchAsync().GetAwaiter().GetResult();
+
+            Assert.AreEqual(500, credits.Balance, "AC-1: a Granted record is never re-credited.");
+            Assert.AreEqual(1, store.Stored.GuaranteedRareLures,
+                "AC-1: a Granted Veil record grants NO second lure — exactly once across interruption.");
+            Assert.AreEqual(0, store.Stored.PendingPurchases.Count, "Acknowledged + cleared.");
+        }
     }
 }

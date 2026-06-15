@@ -248,8 +248,17 @@ namespace Veilwalkers.Encounter
             // Lures rolled within the SAME live encounter once the deferred re-Lure / queued-spawn flows land;
             // the seam is wired now so the rarity boost reads from the same source as Capture/Slay ease.
             bool nightveilActive = _activeExtras.Contains(ExtraKind.NightveilFilter);
+            bool isGuaranteedRare = kind == LureKind.GuaranteedRare;
             var monsterIds = new List<string>(wanted);
-            if (kind == LureKind.Multi)
+            if (isGuaranteedRare)
+            {
+                // Story 5.3 (AC-2): the FORCED Rare-or-better roll is DEFERRED to step (3a), AFTER placement is
+                // secured AND the one-shot item is consumed — so the RNG draw is never spent (advancing the
+                // shared random stream) on a NoPlacement or zero-inventory block. The Nightveil boost is
+                // irrelevant (the roll is already at the ceiling). The roster-cannot-honor-the-guarantee case is
+                // handled there too (refund-and-block, Decision G — the player keeps the lure).
+            }
+            else if (kind == LureKind.Multi)
             {
                 (string first, string second) = _lureSystem.RollMultiMonsters(nightveilActive);
                 monsterIds.Add(first);
@@ -278,12 +287,30 @@ namespace Veilwalkers.Encounter
                     LureFailureReason.NoPlacement, SpendResult.Failed(SpendFailureReason.NotAttempted, CurrentBalance()));
             }
 
-            // (3) The atomic credit-spend write (AR-8): ONE persist, whole-mutation rollback. Insufficient
-            // credits is reported WITHOUT persisting; a persist fault rolls back.
-            SpendResult spend = await CommitLureSpendAsync(cost).ConfigureAwait(false);
+            // (3) The atomic write (AR-8): ONE persist, whole-mutation rollback. For a GuaranteedRare Lure this
+            // CONSUMES one one-shot item (Story 5.3, NOT Credits — cost is 0); for every other kind it deducts
+            // Credits. A shortfall is reported WITHOUT persisting; a persist fault rolls back.
+            SpendResult spend = isGuaranteedRare
+                ? await CommitGuaranteedRareLureConsumeAsync().ConfigureAwait(false)
+                : await CommitLureSpendAsync(cost).ConfigureAwait(false);
 
             if (!spend.Success)
             {
+                if (isGuaranteedRare)
+                {
+                    if (spend.FailureReason == SpendFailureReason.InsufficientCharges)
+                    {
+                        // Story 5.3 (Decision H): the player owns NO Guaranteed-Rare Lure. This is NOT a credit
+                        // shortfall — do NOT raise OnInsufficientCredits (you cannot buy a single lure, only the
+                        // Veil pack; the credit top-up sheet would be the wrong affordance, AR-11). The secured
+                        // placement is abandoned (no spawn, no anchor cost). Surface the distinct typed reason.
+                        return LureResult.Failed(LureFailureReason.NoGuaranteedRareLure, spend);
+                    }
+
+                    // Persist fault on the consume: the decrement (if any) already rolled back inside the write.
+                    return LureResult.Failed(LureFailureReason.PersistenceFailed, spend);
+                }
+
                 if (spend.FailureReason == SpendFailureReason.InsufficientCredits)
                 {
                     // AC-4: raise the rejected-spend event (AR-11 — never open the Shop). The world does not
@@ -296,12 +323,36 @@ namespace Veilwalkers.Encounter
                 return LureResult.Failed(LureFailureReason.PersistenceFailed, spend);
             }
 
+            // (3a) Story 5.3 (AC-2): the FORCED Rare-or-better roll, now that placement is secured AND the
+            // one-shot item is consumed (so the RNG draw was never spent on a NoPlacement / zero-inventory
+            // block). A roster with NO Rare+ Monster cannot honor the guarantee (a content/roster error that
+            // should never ship): REFUND the just-consumed lure (the player keeps what they paid for — Decision
+            // G), release the secured placement, log loudly, and surface the distinct GuaranteedRareUnavailable
+            // reason (NOT a persist fault, NOT an empty inventory). Never a silent Common spawn.
+            if (isGuaranteedRare)
+            {
+                if (!_lureSystem.TryRollGuaranteedRare(out string guaranteedId))
+                {
+                    SpendResult refund = await RefundGuaranteedRareLureAsync().ConfigureAwait(false);
+                    GameLog.Error(
+                        "EncounterService.TryLureAsync (GuaranteedRare) blocked — no Rare-or-better Monster in the " +
+                        "roster to honor the guarantee. The one-shot lure was refunded (the player keeps it); fix the roster content.");
+                    return LureResult.Failed(LureFailureReason.GuaranteedRareUnavailable, refund);
+                }
+
+                monsterIds.Add(guaranteedId);
+            }
+
             // (4) The spend committed — NOW activate the secured placements as pooled spawns and move
             // Idle → Lured (recording the anchors for AC-3 recovery). The spawn is the "perform" step; given
             // the pre-check it should not fail, but a cap refusal here is the NFR-3 path → refund + abort.
             if (!ActivateSpawns(anchors, out List<int> handles))
             {
-                SpendResult refund = await RefundLureSpendAsync(cost).ConfigureAwait(false);
+                // Refund the cost back — Credits for a normal Lure, the one-shot item for a GuaranteedRare Lure
+                // (Story 5.3 — "no charge without a spawn" applies to the lure too, [[failure-path-cleanup-parity]]).
+                SpendResult refund = isGuaranteedRare
+                    ? await RefundGuaranteedRareLureAsync().ConfigureAwait(false)
+                    : await RefundLureSpendAsync(cost).ConfigureAwait(false);
                 GameLog.Warn(
                     $"EncounterService.TryLureAsync ({kind}): a spawn was refused after the deduction — refunded " +
                     "and aborted (NFR-3). No charge without a spawn.");
@@ -318,7 +369,9 @@ namespace Veilwalkers.Encounter
                     _monsterSpawner.Release(handle);
                 }
 
-                SpendResult refund = await RefundLureSpendAsync(cost).ConfigureAwait(false);
+                SpendResult refund = isGuaranteedRare
+                    ? await RefundGuaranteedRareLureAsync().ConfigureAwait(false)
+                    : await RefundLureSpendAsync(cost).ConfigureAwait(false);
                 GameLog.Error(
                     $"EncounterService.TryLureAsync ({kind}): Idle → Lured transition was refused after a committed " +
                     "spend — released the spawns + refunded (should be unreachable given the Idle pre-check).");
@@ -487,6 +540,122 @@ namespace Veilwalkers.Encounter
                 }
 
                 return SpendResult.Succeeded(model.Credits);
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// The atomic one-shot Guaranteed-Rare Lure CONSUME composed write (Story 5.3, AC-2) — a SIBLING of
+        /// <see cref="CommitLureSpendAsync"/> that decrements <c>model.GuaranteedRareLures</c> instead of
+        /// <c>model.Credits</c>. Same pipeline shape: acquire the SHARED <see cref="SaveMutationLock"/> →
+        /// capture the model ref once → guard <c>GuaranteedRareLures &gt; 0</c> (a zero-inventory consume is a
+        /// typed <see cref="SpendFailureReason.InsufficientCharges"/> failure that mutates/persists NOTHING —
+        /// the <see cref="ProgressionService.TryConsumeChargeAsync"/> <c>priorCount == 0</c> guard; the caller
+        /// maps it to <see cref="LureFailureReason.NoGuaranteedRareLure"/>) → decrement in memory → ONE
+        /// <c>SaveAsync</c> → recovery-swap guard → roll the decrement back on any fault. Mutates the model
+        /// DIRECTLY under the shared lock — never via an Economy service (which takes its OWN lock and would
+        /// deadlock + persist separately, the [[codex-service-lock-tier]] rule, exactly as
+        /// <see cref="CommitLureSpendAsync"/>). The "NewBalance" the returned <see cref="SpendResult"/> carries
+        /// is the remaining one-shot COUNT (not Credits) — the consume does not touch Credits.
+        /// </summary>
+        private async Task<SpendResult> CommitGuaranteedRareLureConsumeAsync()
+        {
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                int priorCount = model.GuaranteedRareLures;
+
+                if (priorCount <= 0)
+                {
+                    // Expected "no lure to use" failure — no mutation, no persist. Distinct from a credit
+                    // shortfall (the caller surfaces NoGuaranteedRareLure, never raises OnInsufficientCredits).
+                    return SpendResult.Failed(SpendFailureReason.InsufficientCharges, priorCount);
+                }
+
+                model.GuaranteedRareLures = priorCount - 1;
+
+                try
+                {
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+
+                    if (ReferenceEquals(_saveService.Current, model))
+                    {
+                        return SpendResult.Succeeded(model.GuaranteedRareLures);
+                    }
+
+                    // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at, NOT this
+                    // decrement. Revert onto the captured ref (the swap-branch contract) + report failure.
+                    model.GuaranteedRareLures = priorCount;
+                    GameLog.Error(
+                        "EncounterService: a Guaranteed-Rare Lure consume rolled back — the save model was " +
+                        "swapped mid-operation (recovery raced a mutation).");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, priorCount);
+                }
+                catch (Exception ex)
+                {
+                    model.GuaranteedRareLures = priorCount;
+                    GameLog.Error(
+                        $"EncounterService: a Guaranteed-Rare Lure consume rolled back — persist failed. {ex.Message}");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, priorCount);
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Refund a consumed Guaranteed-Rare Lure (Story 5.3 — the NFR-3 "no charge without a spawn" path when
+        /// a spawn is refused AFTER the consume committed): re-credit ONE one-shot item in one atomic write
+        /// under the shared lock, so a refused spawn never burns the player's paid lure. Mirrors
+        /// <see cref="RefundLureSpendAsync"/> (add instead of subtract), on <c>GuaranteedRareLures</c>.
+        /// </summary>
+        private async Task<SpendResult> RefundGuaranteedRareLureAsync()
+        {
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                model.GuaranteedRareLures += 1; // restore the one-shot item in memory so it is never burned
+
+                try
+                {
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+                    if (!ReferenceEquals(_saveService.Current, model))
+                    {
+                        // Recovery swap mid-persist: the +1 above landed on the captured (now-detached) ref, NOT
+                        // the live model. A paid one-shot lure must NOT be lost to a swap (more consequential than
+                        // a re-earnable Credit), so RE-APPLY the restore onto the live Current model so the player
+                        // keeps the lure regardless of which model won. The durable save may lag a write, but the
+                        // in-memory live state is correct (no phantom divergence — the swap-branch contract).
+                        SaveModel current = _saveService.Current;
+                        if (current != null)
+                        {
+                            current.GuaranteedRareLures += 1;
+                        }
+
+                        GameLog.Error(
+                            "EncounterService: a Guaranteed-Rare Lure refund raced a recovery swap mid-persist — " +
+                            "the restore was re-applied onto the live save model; the durable save may lag a write.");
+                        return SpendResult.Failed(SpendFailureReason.PersistenceFailed, _saveService.Current?.GuaranteedRareLures ?? 0);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Persist fault (the model was NOT swapped): the +1 stands on the live model so the lure is
+                    // never burned; only the durable write lags until the next save.
+                    GameLog.Error(
+                        $"EncounterService: a Guaranteed-Rare Lure refund persist failed — the restore stands in " +
+                        $"memory (the lure is not burned); the durable save lags. {ex.Message}");
+                    return SpendResult.Failed(SpendFailureReason.PersistenceFailed, model.GuaranteedRareLures);
+                }
+
+                return SpendResult.Succeeded(model.GuaranteedRareLures);
             }
             finally
             {

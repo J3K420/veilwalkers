@@ -81,12 +81,17 @@ namespace Veilwalkers.Encounter
                 case LureKind.Basic: return _config.BasicLureCost;
                 case LureKind.Premium: return _config.PremiumLureCost;
                 case LureKind.Multi: return _config.MultiLureCost;
+                // Story 5.3 — the Guaranteed-Rare Lure costs ZERO Credits: the Veil pack already paid, and it
+                // is consumed from the one-shot SaveModel.GuaranteedRareLures inventory, never Credits. NOT an
+                // EconomyConfig tunable (the 4-action credit table is Basic/Premium/Multi/Slay only — canon).
+                case LureKind.GuaranteedRare: return 0;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown LureKind.");
             }
         }
 
-        /// <summary>How many Monsters <paramref name="kind"/> spawns: 1 for Basic/Premium, 2 for Multi (AC-3).</summary>
+        /// <summary>How many Monsters <paramref name="kind"/> spawns: 2 for Multi, 1 otherwise (Basic/Premium
+        /// and the Story 5.3 GuaranteedRare each spawn ONE).</summary>
         public int MonsterCountOf(LureKind kind) => kind == LureKind.Multi ? 2 : 1;
 
         /// <summary>The rare-tier roll probability for <paramref name="kind"/> (AC-2). Multi rolls each
@@ -142,6 +147,51 @@ namespace Veilwalkers.Encounter
         {
             double chance = RareChanceOf(LureKind.Multi, nightveilActive);
             return (RollOne(chance), RollOne(chance));
+        }
+
+        /// <summary>
+        /// Roll the ONE Monster of a Guaranteed-Rare Lure (Story 5.3, FR-13, AC-2): a uniform pick from the
+        /// <c>Rarity &gt;= RarityThresholds.GuaranteedRareFloor</c> (Rare-or-better) populated subset ONLY.
+        /// <para>
+        /// Unlike <see cref="RollMonster"/> this is NOT a probabilistic roll and has NO common fallback: the
+        /// guarantee is a CONTRACT, not a probability. If the roster has no Rare+ Monster (a content/roster
+        /// error — the MVP roster MUST contain at least one Rare+), this returns <c>false</c> (a TYPED failure,
+        /// never a throw — NFR-3, and never a silent Common spawn that would violate the guarantee). The caller
+        /// (<see cref="EncounterService"/>) then blocks the Lure WITHOUT consuming the player's one-shot item.
+        /// An empty/all-null database is likewise a typed <c>false</c> (nothing to Lure).
+        /// </para>
+        /// </summary>
+        public bool TryRollGuaranteedRare(out string monsterId)
+        {
+            monsterId = null;
+
+            IReadOnlyList<MonsterDefinition> populated = _database.Populated;
+            if (populated == null || populated.Count == 0)
+            {
+                return false;
+            }
+
+            // Build the rare-or-better subset ONLY — no fallback to the whole set (the guarantee cannot degrade
+            // to a Common). Skip null slots defensively (the Validate() pass owns content correctness).
+            var rareOrBetter = new List<MonsterDefinition>(populated.Count);
+            foreach (MonsterDefinition def in populated)
+            {
+                if (def != null && def.Rarity >= RarityThresholds.GuaranteedRareFloor)
+                {
+                    rareOrBetter.Add(def);
+                }
+            }
+
+            if (rareOrBetter.Count == 0)
+            {
+                // A content error: the roster cannot honor the guarantee. Surface it as a typed failure so the
+                // consume can refuse and KEEP the player's paid lure (EncounterService logs loudly).
+                return false;
+            }
+
+            int index = _random.Next(rareOrBetter.Count);
+            monsterId = rareOrBetter[index].Id;
+            return true;
         }
 
         private string RollOne(double rareChance)
