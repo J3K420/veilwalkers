@@ -276,9 +276,11 @@ namespace Veilwalkers.App
                 // `var lureSystem = new LureSystem(_economyConfig, monsterDatabase, random);`
                 // `var captureSystem = new CaptureSystem(random);` (Story 4.4 — the Capture success roll; reuses
                 //   the SAME IRandom instance as LureSystem) then
+                // `var slaySystem = new SlaySystem(_economyConfig, random);` (Story 4.5 — the Slay success roll +
+                //   cost accessor; reuses the SAME IRandom instance and the SAME EconomyConfig) then
                 // `var encounterService = new EncounterService(saveService, creditService, progressionService,
                 //   codexService, economyMutationLock, anchorRestoreService, arSessionService,
-                //   lureSystem, planeAnchorService, monsterSpawner, captureSystem);` then
+                //   lureSystem, planeAnchorService, monsterSpawner, captureSystem, slaySystem);` then
                 // `GameServices.Register<EncounterService>(encounterService);`. CRITICAL: pass the SAME
                 // economyMutationLock constructed above (shared with CreditService/ProgressionService) — the
                 // composed Encounter write MUST serialize against plain Economy writes (that is the whole point

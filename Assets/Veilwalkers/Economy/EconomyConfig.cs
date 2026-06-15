@@ -156,6 +156,26 @@ namespace Veilwalkers.Economy
                     this);
             }
 
+            // The XP-grant amounts must be POSITIVE: ProgressionService.StageXpGrant (the seam the Capture/Slay
+            // composed writes call) throws ArgumentOutOfRangeException on amount <= 0, so a non-positive
+            // XpPerCapture/XpPerSlay passes the relative check above (e.g. -5 > -10) yet crashes a Capture/Slay
+            // at runtime. Warn at edit time so the misconfiguration is caught in the Inspector, not in play.
+            if (_xpPerCapture <= 0)
+            {
+                Debug.LogWarning(
+                    $"EconomyConfig: XpPerCapture ({_xpPerCapture}) must be positive — a Capture grants this " +
+                    "XP via ProgressionService.StageXpGrant, which rejects a non-positive amount.",
+                    this);
+            }
+
+            if (_xpPerSlay <= 0)
+            {
+                Debug.LogWarning(
+                    $"EconomyConfig: XpPerSlay ({_xpPerSlay}) must be positive — a Slay grants this XP via " +
+                    "ProgressionService.StageXpGrant, which rejects a non-positive amount.",
+                    this);
+            }
+
             if (_levelXpThresholds == null || _levelXpThresholds.Length == 0)
             {
                 Debug.LogWarning(

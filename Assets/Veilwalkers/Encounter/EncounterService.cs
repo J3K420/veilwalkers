@@ -74,6 +74,10 @@ namespace Veilwalkers.Encounter
         // persists). Ctor-injected (AR-4).
         private readonly CaptureSystem _captureSystem;
 
+        // Story 4.5 — the Slay success-roll decision + cost accessor (the CaptureSystem precedent). The service
+        // composes its roll outcome into the atomic Slay write (credits + codex + XP, roll-gated). Ctor-injected (AR-4).
+        private readonly SlaySystem _slaySystem;
+
         private readonly EncounterStateMachine _stateMachine = new EncounterStateMachine();
 
         // The active encounter's anchors (in-memory only this story — the persisted Shop round-trip snapshot
@@ -119,7 +123,8 @@ namespace Veilwalkers.Encounter
             LureSystem lureSystem,
             PlaneAnchorService planeAnchorService,
             MonsterSpawner monsterSpawner,
-            CaptureSystem captureSystem)
+            CaptureSystem captureSystem,
+            SlaySystem slaySystem)
         {
             _saveService = saveService ?? throw new ArgumentNullException(nameof(saveService));
             _creditService = creditService ?? throw new ArgumentNullException(nameof(creditService));
@@ -132,6 +137,7 @@ namespace Veilwalkers.Encounter
             _planeAnchorService = planeAnchorService ?? throw new ArgumentNullException(nameof(planeAnchorService));
             _monsterSpawner = monsterSpawner ?? throw new ArgumentNullException(nameof(monsterSpawner));
             _captureSystem = captureSystem ?? throw new ArgumentNullException(nameof(captureSystem));
+            _slaySystem = slaySystem ?? throw new ArgumentNullException(nameof(slaySystem));
 
             // AC-3: the encounter consumer of the AR-loss event 3.3 already raises. Subscribed for the
             // service's lifetime; symmetric unsubscribe lands with the Epic-6 disposal/teardown contract.
@@ -740,7 +746,264 @@ namespace Veilwalkers.Encounter
             return result;
         }
 
-        // ---- AC-2: the atomic multi-delta write primitive (Slay 4.5 / extras 4.6 compose this) ----
+        // ---- FR-9 (Story 4.5): Slay — a 3-Credit action for superior loot (more XP than Capture) ----
+
+        /// <summary>
+        /// Slay the settled Monster <paramref name="monsterId"/> (Story 4.5, FR-9). A Slay costs
+        /// <see cref="EconomyConfig.SlayCost"/> Credits (canon 3, surfaced on <see cref="SlayResult.Cost"/> so
+        /// the HUD shows it before the spend — AC-1). The outcome is a ROLL (<see cref="SlaySystem"/>): a
+        /// SUCCESS deducts exactly 3 Credits, records the <c>Slain</c> Codex discovery (X/67 +1 if newly
+        /// discovered), AND grants <see cref="EconomyConfig.XpPerSlay"/> XP — STRICTLY more than Capture
+        /// (FR-9) — all committed in ONE atomic save (AR-8). A MISS deducts NOTHING (no Credits lost), records
+        /// nothing, and leaves the encounter live for a FREE Retry (just call this again — AC-3).
+        /// <para>
+        /// <b>The spend is ROLL-GATED (Decision C).</b> The 3 Credits are deducted ONLY on a winning roll —
+        /// the deduction + discovery + XP are ONE write that runs only on a success (a miss is save-count 0).
+        /// This is the only reading consistent with BOTH "no Credits lost on a failed Slay" AND "Retry is free"
+        /// (a per-attempt charge would make Retry cost Credits). architecture.md:648 — the spend + resolution
+        /// commit as ONE write ("prevents free-Slay via two separate persists").
+        /// </para>
+        /// <para>
+        /// Returns a typed <see cref="SlayResult"/> — never throws for an expected outcome (a miss, an
+        /// insufficient-credits block, an out-of-sequence call, a persist fault are all reported on the result,
+        /// AR-7); throws only for a null/empty/invalid monster id (programmer error). <see cref="SlayResult.Success"/>
+        /// = "the attempt ran"; <see cref="SlayResult.Slain"/> = the roll outcome (slain vs missed).
+        /// </para>
+        /// <para>
+        /// Drives the in-encounter loop (Lured → Acting → Resolving → Lured) — modelled on
+        /// <see cref="TryCaptureAsync"/> (it calls <c>BeginAction</c> itself then <c>BeginResolve</c>), NOT the
+        /// inherited <see cref="RunActionAsync"/> (which assumes the caller already drove Lured → Acting and
+        /// returns the misleading <c>PersistenceFailed</c>+0 on its out-of-sequence branch). A MISS is a
+        /// successfully RESOLVED action (it <c>CompleteResolve</c>s back to Lured), not a state-machine failure.
+        /// </para>
+        /// </summary>
+        public async Task<SlayResult> TrySlayAsync(string monsterId)
+        {
+            int cost = _slaySystem.Cost;
+
+            // Validate the FULL id up front (programmer error — same contract as TryCaptureAsync/TryScanAsync)
+            // BEFORE touching the state machine, so a bad id never leaves the machine stranded mid-resolve and
+            // an invalid id throws regardless of the roll outcome.
+            if (string.IsNullOrEmpty(monsterId) || !MonsterDatabase.IsValidMonsterId(monsterId))
+            {
+                throw new ArgumentException(
+                    $"'{monsterId}' is not a valid Monster id (expected mon01..mon{MonsterDatabase.UniverseCount:00}).",
+                    nameof(monsterId));
+            }
+
+            // The state machine must be able to enter Acting — a live encounter with a settled Monster (AC-1).
+            // A Slay out of sequence (no Lured encounter) is a typed NotSettled failure, NOT the misleading
+            // inherited PersistenceFailed+0 (settles the 4.1 out-of-sequence deferral for the Slay path).
+            if (!_stateMachine.BeginAction())
+            {
+                GameLog.Warn(
+                    $"EncounterService.TrySlayAsync ignored — no settled Monster to slay (state: {_stateMachine.State}).");
+                return SlayResult.Failed(SlayFailureReason.NotSettled, cost, CurrentBalance());
+            }
+
+            // Lured → Acting succeeded; open the commit window (Acting → Resolving), run the rolled write, and
+            // settle the resolve. A MISS still CompleteResolves (a resolved "miss" returns to Lured for Retry,
+            // AC-3); only a true persist fault FailResolves. Mirrors TryCaptureAsync's sequencing.
+            if (!_stateMachine.BeginResolve())
+            {
+                // Should be unreachable (we just entered Acting). Reconcile rather than stranding the machine in
+                // Acting (a stuck-in-Acting encounter is bricked) — EndEncounter resets to Idle + releases the
+                // Lure's pooled spawns (the [[failure-path-cleanup-parity]] discipline, the TryCaptureAsync precedent).
+                GameLog.Error(
+                    "EncounterService.TrySlayAsync: could not begin resolve after entering Acting (unexpected) — " +
+                    "ending the encounter to avoid stranding it in Acting.");
+                EndEncounter();
+                return SlayResult.Failed(SlayFailureReason.NotSettled, cost, CurrentBalance());
+            }
+
+            // Roll the success OUTSIDE the locked write (the CaptureSystem/LureSystem precedent: the system
+            // rolls, the service composes the persist with the known outcome). One draw on IRandom.
+            bool rollSucceeded = _slaySystem.RollSlay();
+
+            SlayResult result;
+            try
+            {
+                result = await CommitSlayAsync(monsterId, cost, rollSucceeded).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // The composed write throws only for a programmer/system error (an unloaded/corrupt model —
+                // RequireModel). We are mid-resolve (BeginResolve succeeded above); rethrowing without settling
+                // would strand the machine in Resolving (a bricked encounter). Reconcile via EndEncounter (Resets
+                // to Idle + releases the Lure's pooled spawns) BEFORE propagating — the [[failure-path-cleanup-parity]]
+                // discipline, the TryCaptureAsync precedent. The caller still sees the exception (it IS a programmer
+                // error), just not a stranded machine.
+                EndEncounter();
+                throw;
+            }
+
+            // A persist fault (the ONLY false-Success outcome that reached the write) FailResolves; everything
+            // else — a slay OR a miss OR an insufficient-credits block — is a clean resolution back to Lured.
+            if (result.Success || result.FailureReason != SlayFailureReason.PersistenceFailed)
+            {
+                _stateMachine.CompleteResolve();
+            }
+            else
+            {
+                _stateMachine.FailResolve();
+            }
+
+            // AC-1: surface the rejected spend at the encounter altitude (AR-11 — the service NEVER opens the
+            // Shop). Raised AFTER the resolve settles so the machine is in a consistent state for the subscriber.
+            // Slay is the SECOND credit-spending caller of this seam (after the 4.2 Lure).
+            if (!result.Success && result.FailureReason == SlayFailureReason.InsufficientCredits)
+            {
+                RaiseInsufficientCredits(new InsufficientCreditsEvent(cost, result.NewBalance));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// The atomic SLAY composed write (AR-8) — the FIFTH composed-write sibling (after the 4.1 charge
+        /// <see cref="CommitActionAsync"/>, the 4.2 credit <see cref="CommitLureSpendAsync"/>, the 4.3 free
+        /// <see cref="CommitScanAsync"/>, the 4.4 roll-aware <see cref="CommitCaptureAsync"/>). Its delta —
+        /// CREDITS + codex (<c>Slain</c>) + XP (<see cref="EconomyConfig.XpPerSlay"/>) — matches no other
+        /// sibling (Lure spends credits but does not discover; Capture consumes a CHARGE, not Credits), so Slay
+        /// gets its own write (this settles the 4.4 "Slay decides whether to fold into RunActionAsync"
+        /// deferral: NO — <see cref="CommitActionAsync"/> consumes a charge + grants no XP). Same pipeline shape:
+        /// acquire the SHARED <see cref="SaveMutationLock"/> once → capture the model ref once → mutate the
+        /// staged slices in memory → ONE <c>SaveAsync</c> → recovery-swap guard → whole-mutation rollback on any
+        /// fault → release → events after release.
+        /// <para>
+        /// The roll-gated outcome shapes (Decision C):
+        /// <list type="bullet">
+        /// <item><b>MISS</b> → nothing staged (no deduction, no discovery, no XP) → no persist (save-count 0), a
+        ///   <see cref="SlayResult"/> with <c>Slain=false</c> and the UNCHANGED balance (free Retry, AC-3 — no
+        ///   Credits lost).</item>
+        /// <item><b>HIT, insufficient Credits</b> → typed <see cref="SlayFailureReason.InsufficientCredits"/>,
+        ///   no mutation, no persist (save-count 0); the public method raises <see cref="OnInsufficientCredits"/>.</item>
+        /// <item><b>HIT, affordable</b> → deduct 3 Credits + Codex <c>Slain</c> discovery + XP grant → ONE
+        ///   persist (save-count 1), <c>Slain=true</c>.</item>
+        /// </list>
+        /// On a fault, every staged slice is reverted onto the captured ref. The Credit slice and the XP-grant
+        /// slice touch DISJOINT fields (<c>Credits</c> vs <c>Xp</c>/charges) — <see cref="ProgressionService.StageXpGrant"/>
+        /// only ever GRANTS charges, never touches Credits — so there is NO load-bearing revert ordering here
+        /// (unlike Capture's Decision F', where the XP stage and an explicit charge consume shared the same
+        /// field). All three are still reverted.
+        /// </para>
+        /// </summary>
+        private async Task<SlayResult> CommitSlayAsync(string monsterId, int cost, bool rollSucceeded)
+        {
+            SlayResult result;
+            bool committed = false;
+            int priorCredits = 0;
+            bool creditsDeducted = false;
+            CodexService.CodexStage codexStage = default;
+            ProgressionService.ProgressionStage xpStage = default;
+
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Capture the model reference ONCE — a recovery swap mid-persist must never make the rollback
+                // write onto a NEW model (the inherited rollback-fidelity discipline).
+                SaveModel model = RequireModel();
+                priorCredits = model.Credits;
+
+                if (!rollSucceeded)
+                {
+                    // MISS: nothing changes (the spend is roll-gated — no deduction, no discovery, no XP). Skip
+                    // the SaveAsync entirely (AR-8 — no write when nothing changed). A free Retry, no Credits
+                    // lost (AC-3). The base-Capture-miss precedent (CommitCaptureAsync).
+                    result = SlayResult.Succeeded(monsterId, slain: false, cost, priorCredits);
+                }
+                else if (priorCredits < cost)
+                {
+                    // HIT but can't afford: the expected "not enough Credits" block (the >= rule, the
+                    // CommitLureSpendAsync precedent). No mutation, no persist; the public method raises
+                    // OnInsufficientCredits (AR-11). The unchanged balance is reported so the event payload is
+                    // accurate, and the encounter stays live for a Retry once the player tops up.
+                    result = SlayResult.Failed(SlayFailureReason.InsufficientCredits, cost, priorCredits);
+                }
+                else
+                {
+                    // HIT and affordable → stage all three slices, then ONE persist.
+                    // (a) credit slice: deduct in memory (exact-balance OK: priorCredits == cost → 0, the >= rule).
+                    // Set the flag BEFORE the mutation so the catch/swap revert never lags the mutation it guards
+                    // (the rollback-fidelity discipline, the CommitCaptureAsync charge-flag precedent).
+                    creditsDeducted = true;
+                    model.Credits = priorCredits - cost;
+
+                    // (b) codex slice: stage the Slain discovery (lock-free, persist-free — the composed write
+                    // owns the persist). DiscoverySource.Slay sets the Slain flag (NOT Captured).
+                    codexStage = _codexService.StageDiscovery(model, monsterId, DiscoverySource.Slay);
+
+                    // (c) XP slice: stage the Slay XP grant (XpPerSlay > XpPerCapture — FR-9). Read XpPerSlay from
+                    // the shared EconomyConfig (the CommitCaptureAsync precedent reads XpPerCapture via
+                    // _lureSystem.Config). Folded into THIS write — never a second AddXpAsync save (AR-8).
+                    xpStage = _progressionService.StageXpGrant(model, _lureSystem.Config.XpPerSlay);
+
+                    try
+                    {
+                        // ONE persist for every staged slice (AR-8: never two persists per action — the
+                        // load-bearing "no free-Slay via two separate persists", architecture.md:648).
+                        await _saveService.SaveAsync().ConfigureAwait(false);
+
+                        if (ReferenceEquals(_saveService.Current, model))
+                        {
+                            committed = true;
+                            result = SlayResult.Succeeded(monsterId, slain: true, cost, model.Credits);
+                        }
+                        else
+                        {
+                            // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at,
+                            // NOT this slay. Revert EVERY staged slice onto the captured ref. The slices touch
+                            // DISJOINT fields (Credits vs Xp/charges), so there is no load-bearing ordering —
+                            // but revert all three.
+                            xpStage.Revert();
+                            codexStage.Revert();
+                            if (creditsDeducted)
+                            {
+                                model.Credits = priorCredits;
+                            }
+
+                            GameLog.Error(
+                                $"EncounterService: a Slay of '{monsterId}' ({cost} Credits) rolled back — the save " +
+                                "model was swapped mid-operation (recovery raced a mutation).");
+                            result = SlayResult.Failed(SlayFailureReason.PersistenceFailed, cost, priorCredits);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Persist fault: revert EVERY staged slice onto the captured ref — never recompute.
+                        xpStage.Revert();
+                        codexStage.Revert();
+                        if (creditsDeducted)
+                        {
+                            model.Credits = priorCredits;
+                        }
+
+                        GameLog.Error(
+                            $"EncounterService: a Slay of '{monsterId}' ({cost} Credits) rolled back — persist failed. {ex.Message}");
+                        result = SlayResult.Failed(SlayFailureReason.PersistenceFailed, cost, priorCredits);
+                    }
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+
+            // Events AFTER the lock releases, ONLY on a committed slay (a miss/block commits no events). The
+            // discovery + XP/level/charge events live with their owning services (raised via the staged handles).
+            // Slay consumes NO charge (it spends Credits), so there is no explicit RaiseChargesChanged and no
+            // duplicate-event guard (unlike Capture's Decision F') — any charge change is a pure level-up grant
+            // carried by xpStage.RaiseCommittedEvents().
+            if (committed)
+            {
+                codexStage.RaiseCommittedEvents();
+                xpStage.RaiseCommittedEvents();
+            }
+
+            return result;
+        }
+
+        // ---- AC-2: the atomic multi-delta write primitive (extras 4.6 compose this) ----
 
         /// <summary>
         /// Run a composed action as the encounter state machine expects (Acting → Resolving → Acting): begin

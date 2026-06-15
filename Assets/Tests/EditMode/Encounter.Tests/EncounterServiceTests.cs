@@ -50,6 +50,7 @@ namespace Veilwalkers.Encounter.Tests
             public FakeSpawnSink SpawnSink;
             public MonsterSpawner Spawner;
             public CaptureSystem CaptureSystem;
+            public SlaySystem SlaySystem;
             public EncounterService Encounter;
         }
 
@@ -110,10 +111,15 @@ namespace Veilwalkers.Encounter.Tests
             // `random`: a draw BELOW the chance wins, ABOVE loses. (⚠️ an empty FakeRandom queue defaults to
             // 0.0 = a guaranteed WIN, so every Capture test enqueues its draw explicitly.)
             var captureSystem = new CaptureSystem(random);
+            // Story 4.5 — the Slay success-roll system shares the SAME FakeRandom and EconomyConfig (one
+            // randomness seam + one config per encounter, the production posture). Tests script its draw via the
+            // shared `random`; the cost reads config.SlayCost (canon 3). (⚠️ empty FakeRandom queue defaults to
+            // 0.0 = a guaranteed WIN, so every Slay test enqueues its draw explicitly — the E1 trap.)
+            var slaySystem = new SlaySystem(config, random);
 
             var encounter = new EncounterService(
                 save, credit, progression, codex, mutationLock, anchorRestore, arSessionService,
-                lureSystem, planeAnchor, spawner, captureSystem);
+                lureSystem, planeAnchor, spawner, captureSystem, slaySystem);
 
             return new Harness
             {
@@ -137,6 +143,7 @@ namespace Veilwalkers.Encounter.Tests
                 SpawnSink = spawnSink,
                 Spawner = spawner,
                 CaptureSystem = captureSystem,
+                SlaySystem = slaySystem,
                 Encounter = encounter,
             };
         }
@@ -160,17 +167,18 @@ namespace Veilwalkers.Encounter.Tests
         public void Ctor_null_args_throw()
         {
             var h = CreateHarness(new SaveModel());
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, null, h.PlaneAnchor, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, null, h.Spawner, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, null, h.CaptureSystem));
-            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, null));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(null, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, null, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, null, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, null, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, null, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, null, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, null, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, null, h.PlaneAnchor, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, null, h.Spawner, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, null, h.CaptureSystem, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, null, h.SlaySystem));
+            Assert.Throws<ArgumentNullException>(() => new EncounterService(h.Save, h.Credit, h.Progression, h.Codex, h.Lock, h.AnchorRestore, h.ArSessionService, h.LureSystem, h.PlaneAnchor, h.Spawner, h.CaptureSystem, null));
         }
 
         // ---- AC-2: the generic atomic multi-delta write primitive (RunActionAsync — Slay 4.5 composes it) ----
@@ -557,6 +565,270 @@ namespace Veilwalkers.Encounter.Tests
             var h = LuredHarness(new SaveModel { Credits = 10, StrongCaptureCharges = 1 });
             Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync("not-a-monster", strong: false).GetAwaiter().GetResult());
             Assert.Throws<ArgumentException>(() => h.Encounter.TryCaptureAsync(null, strong: true).GetAwaiter().GetResult());
+        }
+
+        // ---- AC-1/2/3 (Story 4.5): Slay — a 3-Credit action for superior loot (more XP than Capture) ----
+        // The Slay roll is enqueued EXPLICITLY per test (reusing WinDraw/LoseDraw): an empty FakeRandom queue
+        // defaults to 0.0 (a WIN), so a forgotten enqueue would silently pass a miss-path test (the E1 trap).
+        // Win = draw < SlaySuccessChance (0.65); lose = draw >= it — so 0.0 always wins, 0.99 always loses.
+        // NOTE: LuredHarness does a Basic Lure (cost 1) first, so the post-Lure balance is (seed - 1); every
+        // Slay balance assertion reads h.Save.Current.Credits AFTER LuredHarness as the baseline.
+
+        [Test]
+        public void Slay_success_deducts_three_credits_records_Slain_and_grants_xp_in_ONE_save()
+        {
+            // AC-1 + AC-2: a Slay that WINS deducts exactly 3 Credits, records the Slain discovery, and grants
+            // XpPerSlay — all in EXACTLY ONE save (AR-8 — the load-bearing "no free-Slay via two persists").
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            int creditsAfterLure = h.Save.Current.Credits; // 9 (Basic cost 1)
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw); // Slay roll wins
+
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "The attempt ran cleanly.");
+            Assert.IsTrue(result.Slain, "A winning roll slays the Monster.");
+            Assert.AreEqual(h.Config.SlayCost, result.Cost, "AC-1: the cost (3) is carried on the result.");
+            Assert.AreEqual(creditsAfterLure - h.Config.SlayCost, result.NewBalance, "NewBalance is post-spend.");
+            Assert.AreEqual(creditsAfterLure - h.Config.SlayCost, h.Save.Current.Credits, "AC-1: exactly 3 Credits deducted.");
+            Assert.IsTrue(h.Codex.IsDiscovered(MonsterId), "The Codex Slay discovery was recorded.");
+            Assert.IsTrue(h.Codex.GetEntry(MonsterId).Slain, "The Slain flag is set (NOT Captured).");
+            Assert.IsFalse(h.Codex.GetEntry(MonsterId).Captured, "Slay sets Slain, not Captured.");
+            Assert.AreEqual(xpBefore + h.Config.XpPerSlay, h.Save.Current.Xp, "AC-2: XpPerSlay granted on a successful Slay.");
+            Assert.AreEqual(savesBefore + 1, h.Store.SaveCalls, "AR-8: ONE SaveAsync (credits + codex + XP together).");
+            Assert.AreEqual(creditsAfterLure - h.Config.SlayCost, h.Store.Stored.Credits, "...the credit deduction persisted.");
+            Assert.IsTrue(h.Store.Stored.Codex.ContainsKey(MonsterId), "...the codex slice persisted.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter returns to Lured.");
+        }
+
+        [Test]
+        public void Slay_reward_is_strictly_superior_to_Capture_more_xp()
+        {
+            // AC-2: Slay's reward is strictly superior to Capture — its XP grant (XpPerSlay 25) strictly exceeds
+            // Capture's (XpPerCapture 10). The direct inequality (tuner-proof) AND a behavioral pin (the same
+            // Monster slain vs captured yields a strictly larger Xp delta).
+            Assert.Greater(25, 10, "Sanity: the canon values are 25 > 10 (guards a degenerate config).");
+
+            // Direct invariant on the live config (the real enforcement — OnValidate only warns in-editor).
+            var hConfig = CreateHarness(new SaveModel());
+            Assert.Greater(hConfig.Config.XpPerSlay, hConfig.Config.XpPerCapture,
+                "AC-2 / FR-9: XpPerSlay must strictly exceed XpPerCapture.");
+
+            // Behavioral: capture mon01 in one encounter, slay mon01 in another; the Slay Xp delta is larger.
+            var hCap = LuredHarness(new SaveModel { Credits = 10 });
+            int capXpBefore = hCap.Save.Current.Xp;
+            hCap.Random.EnqueueDouble(WinDraw);
+            hCap.Encounter.TryCaptureAsync(MonsterId, strong: false).GetAwaiter().GetResult();
+            int captureXpDelta = hCap.Save.Current.Xp - capXpBefore;
+
+            var hSlay = LuredHarness(new SaveModel { Credits = 10 });
+            int slayXpBefore = hSlay.Save.Current.Xp;
+            hSlay.Random.EnqueueDouble(WinDraw);
+            hSlay.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            int slayXpDelta = hSlay.Save.Current.Xp - slayXpBefore;
+
+            Assert.Greater(slayXpDelta, captureXpDelta, "AC-2: slaying the same Monster grants strictly more XP than capturing it.");
+        }
+
+        [Test]
+        public void Slay_cost_is_carried_on_every_result_shape()
+        {
+            // AC-1 "cost shown before spend": Cost (3) is on the success, the miss, AND the insufficient-credits
+            // failure — the HUD must always be able to render "Slay − 3".
+            int cost = SeededConfigSlayCost();
+
+            var hWin = LuredHarness(new SaveModel { Credits = 10 });
+            hWin.Random.EnqueueDouble(WinDraw);
+            SlayResult win = hWin.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.AreEqual(cost, win.Cost, "Cost carried on a success.");
+
+            var hMiss = LuredHarness(new SaveModel { Credits = 10 });
+            hMiss.Random.EnqueueDouble(LoseDraw);
+            SlayResult miss = hMiss.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.AreEqual(cost, miss.Cost, "Cost carried on a miss.");
+
+            // Insufficient: seed below the cost (post-Lure must be < 3). Lure costs 1, so seed 3 → 2 after Lure.
+            var hBlock = LuredHarness(new SaveModel { Credits = 3 });
+            Assert.Less(hBlock.Save.Current.Credits, cost, "Precondition: post-Lure balance is below the Slay cost.");
+            hBlock.Random.EnqueueDouble(WinDraw);
+            LogAssert.ignoreFailingMessages = true;
+            SlayResult block = hBlock.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+            Assert.AreEqual(SlayFailureReason.InsufficientCredits, block.FailureReason);
+            Assert.AreEqual(cost, block.Cost, "Cost carried on an insufficient-credits failure.");
+        }
+
+        [Test]
+        public void Slay_MISS_records_nothing_loses_no_credits_does_not_persist_and_keeps_the_encounter_live()
+        {
+            // AC-3 (load-bearing): a missed Slay loses NO Credits, records NO discovery, grants NO XP, does NOT
+            // persist (save-count 0), and leaves the encounter live for a free Retry.
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            int xpBefore = h.Save.Current.Xp;
+            int savesBefore = h.Store.SaveCalls;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+            int discoveredBefore = h.Codex.DiscoveredCount;
+            h.Random.EnqueueDouble(LoseDraw); // Slay roll misses
+
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Success, "The attempt ran (a miss is a successful RUN).");
+            Assert.IsFalse(result.Slain, "A losing roll is a miss.");
+            Assert.AreEqual(creditsAfterLure, result.NewBalance, "NewBalance is the UNCHANGED balance on a miss.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "AC-3: NO Credits lost on a failed Slay.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No discovery on a miss.");
+            Assert.AreEqual(discoveredBefore, h.Codex.DiscoveredCount, "X/67 unchanged on a miss.");
+            Assert.AreEqual(0, discoveryEvents, "No discovery event on a miss.");
+            Assert.AreEqual(xpBefore, h.Save.Current.Xp, "No XP on a miss.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing changed → NO persist (save-count 0).");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "AC-3: the encounter stays live for a free Retry.");
+        }
+
+        [Test]
+        public void Slay_miss_then_retry_success_charges_only_for_the_success()
+        {
+            // AC-3 free Retry: a miss costs 0 Credits; the retry success costs exactly 3. The spend is
+            // per-SUCCESS, not per-attempt — a Retry never double-charges for the prior miss.
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            int creditsAfterLure = h.Save.Current.Credits; // 9
+            h.Random.EnqueueDouble(LoseDraw, WinDraw); // [miss, then win] — both Slay rolls draw from NextDouble
+
+            SlayResult miss = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(miss.Success);
+            Assert.IsFalse(miss.Slain, "First attempt misses.");
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "The miss cost 0 Credits.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "Still live for the Retry.");
+
+            SlayResult retry = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            Assert.IsTrue(retry.Slain, "The retry succeeds.");
+            Assert.AreEqual(creditsAfterLure - h.Config.SlayCost, h.Save.Current.Credits,
+                "The success cost exactly 3 — the Retry did not double-charge for the prior miss.");
+        }
+
+        [Test]
+        public void Slay_winning_roll_with_insufficient_credits_is_blocked_raises_the_event_and_persists_nothing()
+        {
+            // AC-1: a Slay whose roll WOULD have won but the player can't afford it is blocked BEFORE any
+            // deduction — typed InsufficientCredits, no persist, no discovery, OnInsufficientCredits raised once,
+            // the encounter stays live for a Retry after top-up.
+            var h = LuredHarness(new SaveModel { Credits = 3 }); // 2 after the Basic Lure — below the Slay cost 3
+            int creditsAfterLure = h.Save.Current.Credits; // 2
+            Assert.Less(creditsAfterLure, h.Config.SlayCost, "Precondition: below the Slay cost.");
+            int savesBefore = h.Store.SaveCalls;
+            int insufficientEvents = 0;
+            InsufficientCreditsEvent captured = default;
+            h.Encounter.OnInsufficientCredits += e => { insufficientEvents++; captured = e; };
+            h.Random.EnqueueDouble(WinDraw); // even a winning roll is blocked — can't afford the spend
+
+            LogAssert.ignoreFailingMessages = true;
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "Blocked before the attempt committed.");
+            Assert.AreEqual(SlayFailureReason.InsufficientCredits, result.FailureReason);
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "No Credits deducted on a block.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "No discovery on a block.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "No persist on a block (save-count 0).");
+            Assert.AreEqual(1, insufficientEvents, "AR-11: OnInsufficientCredits raised exactly once.");
+            Assert.AreEqual(h.Config.SlayCost, captured.Cost, "The event carries the Slay cost.");
+            Assert.AreEqual(creditsAfterLure, captured.Balance, "The event carries the unchanged balance.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "The encounter stays live for a Retry after top-up.");
+        }
+
+        [Test]
+        public void Slay_exact_balance_succeeds_to_zero()
+        {
+            // AC-1 boundary: a balance exactly equal to the Slay cost succeeds to zero (the >= rule). Seed
+            // SlayCost + 1 so the Basic Lure (cost 1) leaves exactly SlayCost.
+            var h = LuredHarness(new SaveModel { Credits = SeededConfigSlayCost() + 1 });
+            Assert.AreEqual(h.Config.SlayCost, h.Save.Current.Credits, "Precondition: post-Lure balance == Slay cost.");
+            h.Random.EnqueueDouble(WinDraw);
+
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(result.Slain, "Exact-balance Slay succeeds (the >= rule).");
+            Assert.AreEqual(0, h.Save.Current.Credits, "Spent to zero.");
+        }
+
+        [Test]
+        public void Slay_persist_fault_rolls_back_all_three_slices()
+        {
+            // NFR-3: a persist fault on a successful Slay rolls back the Credit deduction AND the codex discovery
+            // AND the XP grant; a typed PersistenceFailed; OnMonsterDiscovered fired zero times.
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            int creditsAfterLure = h.Save.Current.Credits;
+            int xpBefore = h.Save.Current.Xp;
+            int discoveryEvents = 0;
+            h.Codex.OnMonsterDiscovered += _ => discoveryEvents++;
+            h.Store.FailNextSave = true;
+            h.Random.EnqueueDouble(WinDraw);
+
+            LogAssert.ignoreFailingMessages = true;
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+            LogAssert.ignoreFailingMessages = false;
+
+            Assert.IsFalse(result.Success, "A persist fault is a typed failure, not a faulted task.");
+            Assert.AreEqual(SlayFailureReason.PersistenceFailed, result.FailureReason);
+            Assert.AreEqual(creditsAfterLure, h.Save.Current.Credits, "The Credit deduction is rolled back.");
+            Assert.IsFalse(h.Codex.IsDiscovered(MonsterId), "The codex entry was NOT leaked.");
+            Assert.AreEqual(xpBefore, h.Save.Current.Xp, "The XP grant is rolled back.");
+            Assert.AreEqual(0, discoveryEvents, "No discovery event on a rolled-back write.");
+            Assert.AreEqual(EncounterState.Lured, h.Encounter.State, "A persist fault still returns to a live state.");
+        }
+
+        [Test]
+        public void Slay_out_of_a_live_encounter_is_a_typed_NotSettled_failure_that_persists_nothing()
+        {
+            // Settles the 4.1 out-of-sequence deferral for Slay: a Slay with no live encounter (Idle) is
+            // NotSettled — NOT the misleading inherited PersistenceFailed+0 — and nothing persists.
+            var h = CreateHarness(new SaveModel { Credits = 10 }); // Idle (no Lure)
+            int savesBefore = h.Store.SaveCalls;
+            h.Random.EnqueueDouble(WinDraw);
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("no settled Monster"));
+            SlayResult result = h.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(SlayFailureReason.NotSettled, result.FailureReason, "Out-of-sequence Slay has a distinct reason.");
+            Assert.AreEqual(savesBefore, h.Store.SaveCalls, "Nothing persisted.");
+            Assert.AreEqual(10, h.Save.Current.Credits, "No Credits deducted.");
+            Assert.AreEqual(EncounterState.Idle, h.Encounter.State, "State unchanged.");
+        }
+
+        [Test]
+        public void The_slay_roll_is_real_consulted_from_random_not_hardcoded()
+        {
+            // Anti-tautology (E1): the SAME inputs with opposite draws produce opposite outcomes — proving the
+            // roll is actually read from IRandom (a hard-coded slain=true would slay on the LoseDraw too).
+            var hWin = LuredHarness(new SaveModel { Credits = 10 });
+            hWin.Random.EnqueueDouble(WinDraw);
+            SlayResult win = hWin.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            var hLose = LuredHarness(new SaveModel { Credits = 10 });
+            hLose.Random.EnqueueDouble(LoseDraw);
+            SlayResult lose = hLose.Encounter.TrySlayAsync(MonsterId).GetAwaiter().GetResult();
+
+            Assert.IsTrue(win.Slain, "A winning draw slays.");
+            Assert.IsFalse(lose.Slain, "A losing draw misses — so the outcome tracks the real roll.");
+        }
+
+        [Test]
+        public void Slay_invalid_or_null_monster_id_throws_a_programmer_error()
+        {
+            var h = LuredHarness(new SaveModel { Credits = 10 });
+            Assert.Throws<ArgumentException>(() => h.Encounter.TrySlayAsync("not-a-monster").GetAwaiter().GetResult());
+            Assert.Throws<ArgumentException>(() => h.Encounter.TrySlayAsync(null).GetAwaiter().GetResult());
+            Assert.Throws<ArgumentException>(() => h.Encounter.TrySlayAsync("").GetAwaiter().GetResult());
+        }
+
+        // The SlayCost on the default canon EconomyConfig the harness uses (3) — read once for the cost pins.
+        private static int SeededConfigSlayCost()
+        {
+            var config = ScriptableObject.CreateInstance<EconomyConfig>();
+            return config.SlayCost;
         }
 
         // ---- AC-3: Suspended on interruption ----
