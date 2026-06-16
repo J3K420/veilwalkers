@@ -36,7 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-16
-# epic-6 in-progress — 6.1 + 6.2 + 6.3 + 6.4 done (2026-06-16); 6.4 = onboarding shell (premise cards + camera disclosure + 20-credit coin-burst presentation) wiring the 6.3 CompleteOnboarding gate, logic-only (589/589 EditMode green). 6.5-6.6 backlog.
+# epic-6 in-progress — 6.1 + 6.2 + 6.3 + 6.4 + 6.5 done (2026-06-16); 6.5 = diegetic voice (VeilVoice copy home — 5 canonical system-moment lines + the plain-safety firewall) + on-brand state treatments (StateTreatmentPresenter mapping the existing AR-session/placement/anchor-restore/camera/codex/safety-gate state enums to StateTreatment decisions, no-percentage invariant structural), logic-only; re-pointed the 2 deferred placeholders (Codex locked-slot, Home reward label) at VeilVoice + landed the plain safety copy (622/622 EditMode green, +33). 6.6 (accessibility floor) backlog — the LAST Epic-6 story.
 # epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
 # epic-5 in-progress — 5.1, 5.2, 5.3, 5.4 ALL done (2026-06-16); 5.4 = the encounter-snapshot convergence story. Epic 5 stories complete; retrospective is optional (run when ready).
 # epic-6 in-progress — 6.1 (Pumpkin Patch design tokens) created 2026-06-16, first Epic-6 story (Visual Identity).
@@ -102,7 +102,7 @@ development_status:
   6-2-build-the-chunky-shared-component-kit: done
   6-3-navigate-between-surfaces-via-the-app-state-machine: done
   6-4-onboard-a-new-player-and-disclose-the-camera: done
-  6-5-apply-diegetic-voice-and-on-brand-state-treatments: backlog
+  6-5-apply-diegetic-voice-and-on-brand-state-treatments: done
   6-6-meet-the-accessibility-floor: backlog
   epic-6-retrospective: optional
 

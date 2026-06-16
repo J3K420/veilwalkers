@@ -149,6 +149,17 @@ namespace Veilwalkers.UI.Tests
             Assert.IsFalse(p.Build().DailyRewardAvailable, "The affordance must reflect CanClaimToday, not be constant.");
         }
 
+        [Test]
+        public void Build_daily_reward_label_is_the_single_VeilVoice_source()
+        {
+            // Story 6.5 single-source pin: the daily-reward control's diegetic label is VeilVoice.RewardedAction
+            // ("Consult the Veil") — one source, closing the prior "diegetic copy is Story 6.5" placeholder.
+            var p = new HomePresenter(NewCodex(Db()), new FakeCreditService(), new FakeDailyReward());
+            // Single-source pin: the label sources VeilVoice.RewardedAction (the constant's exact wording
+            // is pinned independently in VeilVoiceTests — asserting it again here would be tautological).
+            Assert.AreEqual(VeilVoice.RewardedAction, p.Build().RewardControlLabel);
+        }
+
         // ---- graceful degradation ----
 
         [Test]

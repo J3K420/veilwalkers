@@ -69,7 +69,8 @@ namespace Veilwalkers.UI
                 codexEntry: ChunkyButtonStyle.For(ChunkyButtonKind.Secondary, $"{CodexLabel} {codexProgress}"),
                 codexProgressLabel: codexProgress,
                 shopEntry: ChunkyButtonStyle.For(ChunkyButtonKind.Secondary, ShopLabel),
-                dailyRewardAvailable: rewardAvailable);
+                dailyRewardAvailable: rewardAvailable,
+                rewardControlLabel: VeilVoice.RewardedAction);
         }
 
         private int ReadBalance()

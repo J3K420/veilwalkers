@@ -37,9 +37,14 @@ namespace Veilwalkers.UI
         public ChunkyButtonStyle ShopEntry { get; }
 
         /// <summary>Whether the daily-reward affordance is presented as claimable today (from
-        /// <c>IDailyRewardService.CanClaimToday</c>). The view shows/enables the "Consult the Veil"
-        /// reward control accordingly (the diegetic copy is Story 6.5).</summary>
+        /// <c>IDailyRewardService.CanClaimToday</c>). The view shows/enables the reward control
+        /// accordingly, labelled <see cref="RewardControlLabel"/>.</summary>
         public bool DailyRewardAvailable { get; }
+
+        /// <summary>The diegetic label for the daily-reward control — <see cref="VeilVoice.RewardedAction"/>
+        /// ("Consult the Veil"), sourced from the Story-6.5 <see cref="VeilVoice"/> copy home (this closes
+        /// the prior "diegetic copy is Story 6.5" placeholder).</summary>
+        public string RewardControlLabel { get; }
 
         public HomeViewModel(
             WordmarkStyle wordmark,
@@ -48,7 +53,8 @@ namespace Veilwalkers.UI
             ChunkyButtonStyle codexEntry,
             string codexProgressLabel,
             ChunkyButtonStyle shopEntry,
-            bool dailyRewardAvailable)
+            bool dailyRewardAvailable,
+            string rewardControlLabel)
         {
             Wordmark = wordmark;
             CreditPill = creditPill;
@@ -57,6 +63,7 @@ namespace Veilwalkers.UI
             CodexProgressLabel = codexProgressLabel;
             ShopEntry = shopEntry;
             DailyRewardAvailable = dailyRewardAvailable;
+            RewardControlLabel = rewardControlLabel;
         }
     }
 }

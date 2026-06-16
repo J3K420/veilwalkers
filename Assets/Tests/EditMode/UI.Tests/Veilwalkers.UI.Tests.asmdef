@@ -10,7 +10,8 @@
         "Veilwalkers.Persistence",
         "Veilwalkers.Billing",
         "Veilwalkers.Economy",
-        "Veilwalkers.App"
+        "Veilwalkers.App",
+        "Veilwalkers.AR"
     ],
     "includePlatforms": [
         "Editor"

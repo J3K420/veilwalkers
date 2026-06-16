@@ -28,8 +28,14 @@ namespace Veilwalkers.UI
     {
         /// <summary>The diegetic copy shown for an undiscovered slot (UX-DR14 names this exact
         /// locked-slot voice). The view shows this INSTEAD of any content when
-        /// <see cref="IsDiscovered"/> is false.</summary>
-        public const string NotDiscoveredCopy = "Not yet discovered.";
+        /// <see cref="IsDiscovered"/> is false. Sourced from <see cref="VeilVoice.LockedSlot"/> (Story
+        /// 6.5) — the SINGLE diegetic-copy home; this is a forwarding alias, not a second copy of the
+        /// literal. It stays a <c>const</c> (one <c>const</c> may initialize from another <c>const</c>);
+        /// both live in <c>Veilwalkers.UI</c>, so the alias is safe — were <see cref="VeilVoice"/> ever
+        /// split into another assembly, this <c>const</c> would inline at compile time and would need a
+        /// recompile to track a value change (a <c>static readonly</c> would be the runtime-reference
+        /// alternative then).</summary>
+        public const string NotDiscoveredCopy = VeilVoice.LockedSlot;
 
         /// <summary>True when this describes a discovered Monster (show content); false for the
         /// <see cref="NotDiscovered"/> shape (show only <see cref="NotDiscoveredCopy"/>).</summary>

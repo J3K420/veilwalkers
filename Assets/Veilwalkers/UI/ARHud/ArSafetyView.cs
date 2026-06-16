@@ -93,11 +93,14 @@ namespace Veilwalkers.UI
 
         // The bind site. Logic-free BY DESIGN: NO decisions beyond choosing which screen group to
         // show — all of that is the gate's State. This story stubs the render to a log; the real
-        // chunky warning UI lands in Epic 6.
-        // TODO(Epic 6): bind the BlockingFull deliberate-read overlay (plain safety copy, UX-DR14
-        // exception), the BlockingFastCard minimal-dwell card, and the Acknowledged hand-off to AR
-        // entry (Story 3.3). The block itself (camera not interactive / no Encounter action) is the
-        // gate's MayInteract predicate, read by the AR-HUD/Encounter entry (Epic 4/6).
+        // chunky warning UI lands in the Epic-6 asset-authoring pass.
+        // The PLAIN safety copy is now sourced (Story 6.5): VeilVoice.Safety.ArWarningFull (the
+        // BlockingFull deliberate-read overlay) and VeilVoice.Safety.ArWarningFast (the BlockingFastCard
+        // minimal-dwell card) — the UX-DR14 plain exception, never costumed. The StateTreatmentPresenter
+        // .ForSafetyGate(state) maps the gate state → the plain SafetyWarning treatment carrying these.
+        // TODO(Epic 6 asset-authoring): bind the chunky overlay/card widgets that RENDER that copy + the
+        // Acknowledged hand-off to AR entry (Story 3.3). The block itself (camera not interactive / no
+        // Encounter action) is the gate's MayInteract predicate, read by the AR-HUD/Encounter entry.
         private void Render(ArSafetyGateState state)
         {
             switch (state)
@@ -106,10 +109,10 @@ namespace Veilwalkers.UI
                     GameLog.Info("ArSafetyView: inactive (no warning showing).");
                     break;
                 case ArSafetyGateState.BlockingFull:
-                    GameLog.Info("ArSafetyView: showing the FULL AR Safety Warning (deliberate read) — interaction blocked.");
+                    GameLog.Info($"ArSafetyView: showing the FULL AR Safety Warning (deliberate read) — interaction blocked. Copy: \"{VeilVoice.Safety.ArWarningFull}\"");
                     break;
                 case ArSafetyGateState.BlockingFastCard:
-                    GameLog.Info("ArSafetyView: showing the FAST AR Safety Warning card (minimal dwell) — interaction blocked.");
+                    GameLog.Info($"ArSafetyView: showing the FAST AR Safety Warning card (minimal dwell) — interaction blocked. Copy: \"{VeilVoice.Safety.ArWarningFast}\"");
                     break;
                 case ArSafetyGateState.Acknowledged:
                     // Hand-off signal only — AR entry (session start, Story 3.3) is not this story.
