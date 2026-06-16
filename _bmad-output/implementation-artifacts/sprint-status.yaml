@@ -38,6 +38,7 @@ generated: 2026-06-10
 last_updated: 2026-06-16
 # epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
 # epic-5 in-progress — 5.1, 5.2, 5.3, 5.4 ALL done (2026-06-16); 5.4 = the encounter-snapshot convergence story. Epic 5 stories complete; retrospective is optional (run when ready).
+# epic-6 in-progress — 6.1 (Pumpkin Patch design tokens) created 2026-06-16, first Epic-6 story (Visual Identity).
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -95,8 +96,8 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Visual Identity, Navigation & Onboarding Shell
-  epic-6: backlog
-  6-1-implement-the-pumpkin-patch-design-tokens: backlog
+  epic-6: in-progress
+  6-1-implement-the-pumpkin-patch-design-tokens: done
   6-2-build-the-chunky-shared-component-kit: backlog
   6-3-navigate-between-surfaces-via-the-app-state-machine: backlog
   6-4-onboard-a-new-player-and-disclose-the-camera: backlog
