@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Veilwalkers.UI
@@ -74,12 +75,18 @@ namespace Veilwalkers.UI
         public const int Space24 = 24;
         public const int Space32 = 32;
 
+        // The private backing array — never exposed, so the shared scale cannot be mutated through
+        // the public surface (Story 6.2 hardening: a `public static readonly int[]` is reference-frozen
+        // but ELEMENT-mutable — `Spacing[0] = 99` would corrupt the design-token scale process-wide).
+        private static readonly int[] _spacing = { Space4, Space8, Space12, Space16, Space24, Space32 };
+
         /// <summary>
-        /// The full ascending spacing scale (dp). Provided as an immutable ordered set for callers
-        /// that iterate (e.g. a spacing picker); individual call sites use the named
-        /// <c>SpaceNN</c> constants.
+        /// The full ascending spacing scale (dp), as a TRULY immutable ordered set for callers that
+        /// iterate (e.g. a spacing picker). Exposed as <see cref="IReadOnlyList{Int32}"/> over a private
+        /// backing array so no consumer can mutate the shared token scale; individual call sites use the
+        /// named <c>SpaceNN</c> constants. (Story 6.2 settles the 6.1-CR element-mutability deferral.)
         /// </summary>
-        public static readonly int[] Spacing = { Space4, Space8, Space12, Space16, Space24, Space32 };
+        public static readonly IReadOnlyList<int> Spacing = System.Array.AsReadOnly(_spacing);
 
         // ---- Corner radii (UX-DR1) — dp ----
 

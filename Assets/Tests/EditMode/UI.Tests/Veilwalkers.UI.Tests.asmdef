@@ -7,7 +7,8 @@
         "Veilwalkers.Core",
         "Veilwalkers.UI",
         "Veilwalkers.Monsters",
-        "Veilwalkers.Persistence"
+        "Veilwalkers.Persistence",
+        "Veilwalkers.Billing"
     ],
     "includePlatforms": [
         "Editor"

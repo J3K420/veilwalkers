@@ -69,8 +69,8 @@ namespace Veilwalkers.UI.Tests
             int[] expected = { 4, 8, 12, 16, 24, 32 };
             CollectionAssert.AreEqual(expected, PumpkinPatchTokens.Spacing);
 
-            // ascending, strictly increasing
-            for (int i = 1; i < PumpkinPatchTokens.Spacing.Length; i++)
+            // ascending, strictly increasing (Spacing is now IReadOnlyList<int> — .Count, not .Length)
+            for (int i = 1; i < PumpkinPatchTokens.Spacing.Count; i++)
             {
                 Assert.Less(PumpkinPatchTokens.Spacing[i - 1], PumpkinPatchTokens.Spacing[i]);
             }
