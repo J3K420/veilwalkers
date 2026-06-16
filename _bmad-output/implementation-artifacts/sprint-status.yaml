@@ -36,7 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-16
-# epic-6 in-progress — 6.1 + 6.2 done (2026-06-16); 6.2 = the chunky shared component kit. 6.3-6.6 backlog.
+# epic-6 in-progress — 6.1 + 6.2 + 6.3 done (2026-06-16); 6.3 = AppStateMachine surface navigation + insufficient-credits→Shop arbitration + Shop round-trip snapshot wiring. 6.4-6.6 backlog.
 # epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
 # epic-5 in-progress — 5.1, 5.2, 5.3, 5.4 ALL done (2026-06-16); 5.4 = the encounter-snapshot convergence story. Epic 5 stories complete; retrospective is optional (run when ready).
 # epic-6 in-progress — 6.1 (Pumpkin Patch design tokens) created 2026-06-16, first Epic-6 story (Visual Identity).
@@ -100,7 +100,7 @@ development_status:
   epic-6: in-progress
   6-1-implement-the-pumpkin-patch-design-tokens: done
   6-2-build-the-chunky-shared-component-kit: done
-  6-3-navigate-between-surfaces-via-the-app-state-machine: backlog
+  6-3-navigate-between-surfaces-via-the-app-state-machine: done
   6-4-onboard-a-new-player-and-disclose-the-camera: backlog
   6-5-apply-diegetic-voice-and-on-brand-state-treatments: backlog
   6-6-meet-the-accessibility-floor: backlog

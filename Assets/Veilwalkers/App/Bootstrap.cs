@@ -16,8 +16,10 @@ namespace Veilwalkers.App
     /// <para>
     /// Lives in the Bootstrap entry scene (scene 0 in Build Settings) and runs at
     /// <c>[DefaultExecutionOrder(-1000)]</c> so no other <c>Awake</c> can race the
-    /// composition root. Bootstrap does NOT own the AR session, and it does NOT own
-    /// scene flow (the AppStateMachine lands in Story 6.3); it only assembles
+    /// composition root. Bootstrap does NOT own the AR session, and it does NOT drive
+    /// scene flow — it CONSTRUCTS the <see cref="AppStateMachine"/> (Story 6.3, the
+    /// surface-flow owner) and registers it, but the flow itself is driven by that
+    /// state machine + the surface Views, not by Bootstrap. Bootstrap only assembles
     /// services and kicks the initial save load.
     /// </para>
     /// <para>
@@ -283,6 +285,28 @@ namespace Veilwalkers.App
                 var billingService = new BillingService(
                     creditPackCatalog, storeAdapter, creditService, purchaseReconciler);
 
+                // AppStateMachine (Story 6.3, this App tier — architecture.md:462-464) — the surface-flow
+                // state machine + the AC-2 insufficient-credits → Shop arbiter. It is NOT a Core service;
+                // it lives here, the "only thing that arbitrates UI ↔ service control flow." Its ctor
+                // SUBSCRIBES to creditService.OnInsufficientCredits (the AC-2 source); the state machine —
+                // not the service — decides Shop navigation (keeping Billing → Economy one-way). The
+                // encounter Shop-round-trip snapshot port + the SECOND shortfall source (EncounterService's
+                // OnInsufficientCredits) are wired ONLY when EncounterService is registered; it is STILL the
+                // deferred Bootstrap seam (its MonsterDatabase.asset is unauthored — see the CodexService/
+                // EncounterService seam comments above), so the state machine is constructed with the
+                // graceful IEncounterSnapshotPort.NoEncounter no-op + a null second source (the
+                // CodexService-consumer-degrade precedent). To close the seam once EncounterService lands:
+                // build a thin adapter exposing { HasActiveEncounter => State == EncounterState.Lured,
+                // SnapshotActiveEncounter, RehydrateFromSnapshot } onto IEncounterSnapshotPort and pass
+                // encounterService (as IInsufficientCreditsSource) as the third ctor arg. The CONSUMERS —
+                // HomePresenter / ArHudPresenter (Veilwalkers.UI) + their thin Views — resolve this via
+                // GameServices.Get and route their CTA/pill taps through it; placing those Views in scenes
+                // is the deferred Epic-6 view layer (Story 6.4/6.5). The state machine's flow + arbitration
+                // logic is fully proven headless by App.Tests. NOTE: AppStateMachine implements IDisposable
+                // (it must unsubscribe symmetrically — architecture.md:514-515); Bootstrap has no teardown
+                // in a player build (wire-once), but the Dispose exists for tests + future scene unload.
+                var appStateMachine = new AppStateMachine(creditService, IEncounterSnapshotPort.NoEncounter);
+
                 // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
                 // wired this story. It is the read model + atomic discovery-record seam over
                 // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
@@ -358,6 +382,7 @@ namespace Veilwalkers.App
                 GameServices.Register<AnchorRestoreService>(anchorRestoreService);
                 GameServices.Register<MonsterSpawner>(monsterSpawner);
                 GameServices.Register<IBillingService>(billingService);
+                GameServices.Register<AppStateMachine>(appStateMachine);
 
                 // adHook + firstZeroCreditRecorder are intentionally not registered (no
                 // resolver yet); keep references so the constructors run (wiring proof) and
