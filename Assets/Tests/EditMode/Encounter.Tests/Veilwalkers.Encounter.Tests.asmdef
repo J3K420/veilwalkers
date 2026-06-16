@@ -9,7 +9,8 @@
         "Veilwalkers.Economy",
         "Veilwalkers.Monsters",
         "Veilwalkers.AR",
-        "Veilwalkers.Encounter"
+        "Veilwalkers.Encounter",
+        "Veilwalkers.Billing"
     ],
     "includePlatforms": [
         "Editor"

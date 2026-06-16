@@ -141,6 +141,73 @@ namespace Veilwalkers.Encounter.Tests
                 }
             }
 
+            // Story 5.4: deep-copy the encounter snapshot so a SnapshotActiveEncounter is observable on the
+            // stored copy WITHOUT aliasing the live model — and a rehydrate that LoadAsync()-clones reads a
+            // genuinely separate object ([[tautological-test-trap]]: an aliased snapshot would make "the
+            // snapshot persisted" / "rehydrate restored it" pass for the wrong reason). A null snapshot stays
+            // null ("no active encounter" — never coerced to an empty snapshot). Mirrors the production clone.
+            EncounterSnapshotData srcSnap = model.EncounterSnapshot;
+            if (srcSnap != null)
+            {
+                var snap = new EncounterSnapshotData
+                {
+                    Anchors = srcSnap.Anchors == null
+                        ? Array.Empty<AnchorToken>()
+                        : (AnchorToken[])srcSnap.Anchors.Clone(),
+                    Monsters = new List<EncounterMonsterStateData>(),
+                    AppliedExtras = srcSnap.AppliedExtras == null
+                        ? new List<string>()
+                        : new List<string>(srcSnap.AppliedExtras),
+                    State = srcSnap.State,
+                };
+
+                if (srcSnap.Monsters != null)
+                {
+                    foreach (EncounterMonsterStateData m in srcSnap.Monsters)
+                    {
+                        if (m == null)
+                        {
+                            continue;
+                        }
+
+                        snap.Monsters.Add(new EncounterMonsterStateData
+                        {
+                            MonsterId = m.MonsterId,
+                            ScanProgress = m.ScanProgress,
+                            AppliedBoosts = m.AppliedBoosts == null
+                                ? new List<string>()
+                                : new List<string>(m.AppliedBoosts),
+                        });
+                    }
+                }
+
+                copy.EncounterSnapshot = snap;
+            }
+
+            // Story 5.4: deep-copy PendingPurchases too (a new list + a new record per element) so the AC-4
+            // relaunch pin — which records a pending purchase via the REAL PurchaseReconciler and then rehydrates
+            // over the stored model — observes the ledger row on the stored copy WITHOUT aliasing the live list
+            // (the Billing.Tests fake already does this; the Encounter fake needs it now that 5.4 drives the
+            // reconciler + the encounter over ONE shared store). [[tautological-test-trap]]
+            if (model.PendingPurchases != null)
+            {
+                foreach (PendingPurchaseRecord record in model.PendingPurchases)
+                {
+                    if (record == null)
+                    {
+                        continue;
+                    }
+
+                    copy.PendingPurchases.Add(new PendingPurchaseRecord
+                    {
+                        OrderId = record.OrderId,
+                        PackId = record.PackId,
+                        State = record.State,
+                        IsoTimestampUtc = record.IsoTimestampUtc,
+                    });
+                }
+            }
+
             return copy;
         }
     }

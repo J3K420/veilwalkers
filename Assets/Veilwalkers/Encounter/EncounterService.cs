@@ -89,6 +89,13 @@ namespace Veilwalkers.Encounter
         // leak). Set on a successful Lure; cleared + released on EndEncounter.
         private int[] _activeSpawnHandles = Array.Empty<int>();
 
+        // The active encounter's lured Monster id(s) (Story 5.4). Built locally in TryLureAsync and previously
+        // discarded after the LureResult return; retained here so the Shop-round-trip snapshot can capture them
+        // (the snapshot needs the lured ids to restore the encounter state-faithful). INDEX-PARALLEL with
+        // `_activeAnchors`: `_activeMonsterIds[i]` is the Monster anchored at `_activeAnchors[i]` (a Multi-Lure
+        // has two of each, paired in placement order). Set on a successful Lure; cleared on EndEncounter.
+        private string[] _activeMonsterIds = Array.Empty<string>();
+
         // The set of Monster ids scanned THIS encounter (Story 4.3, FR-7 — Decision B1). The in-memory scan
         // PROGRESS record: a Scan records partial progress here EVEN for a not-yet-discovered Monster (so AC-2
         // "partial Codex data even before Capture/Slay" holds WITHOUT creating a Codex key / inflating X/67),
@@ -189,6 +196,7 @@ namespace Veilwalkers.Encounter
 
             _activeSpawnHandles = Array.Empty<int>();
             _activeAnchors = Array.Empty<AnchorToken>();
+            _activeMonsterIds = Array.Empty<string>(); // Story 5.4: clear the lured ids alongside the anchors/handles
             _scannedThisEncounter.Clear(); // per-encounter scan progress does not carry to the next encounter
             _activeExtras.Clear(); // per-encounter extra modifiers (Stability Boost / Nightveil) do not carry over (4.6)
             return _stateMachine.Reset();
@@ -380,6 +388,9 @@ namespace Veilwalkers.Encounter
 
             _activeAnchors = anchors.ToArray();
             _activeSpawnHandles = handles.ToArray();
+            // Story 5.4: retain the lured ids index-parallel with the anchors so the Shop-round-trip snapshot
+            // can capture them. monsterIds and anchors were filled in the same placement order above.
+            _activeMonsterIds = monsterIds.ToArray();
 
             return LureResult.Succeeded(spend, monsterIds);
         }
@@ -1844,6 +1855,425 @@ namespace Veilwalkers.Encounter
             // Every anchor restored or relocated → resume the encounter to the state it left.
             _stateMachine.Resume();
             return anyRelocated ? AnchorRestoreResult.RelocatedToPlane : AnchorRestoreResult.Restored;
+        }
+
+        // ---- AC-1/2/3/4 (Story 5.4): the Shop-round-trip encounter snapshot / rehydrate ----
+        //
+        // The mid-encounter top-up flow: the player taps Slay (3 credits) in a LIVE (Lured) encounter, can't
+        // afford it (OnInsufficientCredits — the encounter stays Lured, the world does not lock), and App/UI
+        // (the Epic-6 AppStateMachine) routes to the Shop. Before leaving, the AppStateMachine calls
+        // SnapshotActiveEncounter() (capture the live encounter to SaveModel.EncounterSnapshot, ONE atomic
+        // write); on return / relaunch it calls RehydrateFromSnapshot() (restore the LOGICAL encounter from the
+        // persisted DTO). The SHEET pixels, the AppStateMachine navigation, the AR-Safety-Warning ShopResume
+        // wiring (already ArSafetyGate's), and the SCENE re-anchor/re-spawn RENDER are Epic 6 / Story 6.3 — 5.4
+        // builds the headless ENGINE (the Recover "scene re-anchor is Story 6.3" / 4.7 render-defer precedent).
+
+        // The stable string tags the snapshot persists (NOT the raw enum ints — telemetry/renumber stability,
+        // the ChargeType/AppliedExtras precedent). Only the snapshottable ACTIVE state (Lured) is ever written.
+        private const string StateTagLured = "Lured";
+        private const string ExtraTagStabilityBoost = "StabilityBoost";
+        private const string ExtraTagNightveilFilter = "NightveilFilter";
+
+        /// <summary>
+        /// Capture the live encounter to <see cref="SaveModel.EncounterSnapshot"/> in ONE atomic write (AR-8,
+        /// AC-2/AC-3) so a Shop round-trip / app-kill can restore it. Snapshots ONLY a <see cref="EncounterState.Lured"/>
+        /// encounter — the Shop top-up happens between actions (the player tapped Slay, it was rejected for
+        /// credits, the sheet opens; the machine is Lured). From <see cref="EncounterState.Idle"/>/
+        /// <see cref="EncounterState.Resolved"/> there is nothing to snapshot (a no-op); from
+        /// <see cref="EncounterState.Resolving"/> the atomic write holds the shared lock (snapshotting would
+        /// deadlock) — a warned no-op; from <see cref="EncounterState.Acting"/>/<see cref="EncounterState.Suspended"/>
+        /// the encounter is mid-action / AR-suspended, out of scope (a warned no-op). Captures the anchors, the
+        /// lured Monster id(s) + per-id scan flag (0/1), and the encounter-wide applied extras (stable tags).
+        /// Returns true only when a snapshot was persisted; never throws for an expected case (NFR-3).
+        /// </summary>
+        public async Task<bool> SnapshotActiveEncounter()
+        {
+            // A pre-lock fast guard for the deadlock case ONLY: Resolving holds the shared lock, so we must NOT
+            // even try to acquire it (a re-entrant wait would deadlock). For every other non-Lured state there
+            // is simply nothing to snapshot — but the AUTHORITATIVE guard + the DTO build run UNDER the lock
+            // below (CR patch), so a concurrent action cannot tear the captured state or flip the state out of
+            // Lured between an unlocked read and the persist. (The CommitLureSpendAsync discipline: lock first,
+            // then read+mutate+persist atomically.)
+            if (_stateMachine.State == EncounterState.Resolving)
+            {
+                GameLog.Warn(
+                    "EncounterService.SnapshotActiveEncounter ignored — cannot snapshot mid-resolve (the atomic " +
+                    "write holds the shared lock; acquiring it would deadlock). No snapshot written.");
+                return false;
+            }
+
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // The AUTHORITATIVE state guard, now UNDER the lock — no concurrent action can have flipped the
+                // state since (and a Resolving write could not have started: it acquires this same lock).
+                if (_stateMachine.State != EncounterState.Lured)
+                {
+                    GameLog.Warn(
+                        $"EncounterService.SnapshotActiveEncounter ignored — only a Lured encounter is snapshottable " +
+                        $"(state: {_stateMachine.State}). No snapshot written.");
+                    return false;
+                }
+
+                // Build the DTO UNDER the lock so the captured anchors / ids / scan flags / extras are a single
+                // consistent instant (never torn by a concurrent Scan/extra/action — CR patch).
+                EncounterSnapshotData dto = BuildSnapshotDto();
+
+                SaveModel model = RequireModel();
+                EncounterSnapshotData priorSnapshot = model.EncounterSnapshot;
+                model.EncounterSnapshot = dto;
+
+                try
+                {
+                    await _saveService.SaveAsync().ConfigureAwait(false);
+
+                    if (ReferenceEquals(_saveService.Current, model))
+                    {
+                        GameLog.Info(
+                            $"EncounterService: snapshotted the active Lured encounter ({dto.Monsters.Count} " +
+                            $"monsters, {dto.Anchors.Length} anchors, {dto.AppliedExtras.Count} extras).");
+                        return true;
+                    }
+
+                    // Recovery swap mid-persist: SaveAsync durably wrote whatever Current pointed at, NOT this
+                    // snapshot. Revert onto the captured ref (the CommitLureSpendAsync swap-branch contract).
+                    model.EncounterSnapshot = priorSnapshot;
+                    GameLog.Error(
+                        "EncounterService: an encounter snapshot rolled back — the save model was swapped " +
+                        "mid-operation (recovery raced a mutation).");
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    model.EncounterSnapshot = priorSnapshot; // revert onto the captured ref — never recompute
+                    GameLog.Error(
+                        $"EncounterService: an encounter snapshot rolled back — persist failed. {ex.Message}");
+                    return false;
+                }
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Restore the LOGICAL encounter from <see cref="SaveModel.EncounterSnapshot"/> on Shop return /
+        /// relaunch (AC-2/AC-3/AC-4) and CONSUME the snapshot (clear + persist, so a second rehydrate is a
+        /// no-op). A from-<see cref="EncounterState.Idle"/> restore (like <see cref="BeginLure"/>): restores the
+        /// anchors, the lured Monster id(s), the per-monster scan flags (<c>ScanProgress &gt; 0</c>), the
+        /// encounter-wide extras, and drives the state machine Idle → Lured. The SCENE re-anchor / pooled
+        /// re-spawn (re-acquiring AR anchors, re-instantiating spawns, replaying the materialization) is Story
+        /// 6.3 — this restores the decision-layer state (the <see cref="Recover"/> "scene re-anchor is Story
+        /// 6.3" precedent); <c>_activeSpawnHandles</c> is process-local (released on teardown), NOT snapshotted.
+        /// A null snapshot (the common launch), an already-active encounter, or a corrupt snapshot (empty
+        /// Monsters / unrecognized State) is a typed no-op (the corrupt case clears the snapshot + logs); never
+        /// throws (NFR-3). Returns true only when an encounter was rehydrated.
+        /// </summary>
+        public async Task<bool> RehydrateFromSnapshot()
+        {
+            // ALL of rehydrate — the read of model.EncounterSnapshot, the in-memory restore of every shared
+            // encounter field, the state-machine drive, AND the consume-clear persist — runs UNDER the shared
+            // lock (CR patch), so it can never race a concurrent mutator or a Current swap (the CommitLureSpendAsync
+            // discipline; AR-8). The clear is AWAITED (no fire-and-forget) so the consume-once contract holds
+            // even under real async I/O — a clear fault means the in-memory restore is rolled back and the call
+            // reports false rather than leaving disk+memory divergent (a relaunch zombie encounter).
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                EncounterSnapshotData dto = model.EncounterSnapshot;
+
+                if (dto == null)
+                {
+                    // The common launch: no interrupted encounter to restore. Silent no-op.
+                    return false;
+                }
+
+                if (_stateMachine.State != EncounterState.Idle)
+                {
+                    // Rehydrate is a from-Idle restore; never clobber a live encounter. The snapshot is left intact.
+                    GameLog.Warn(
+                        $"EncounterService.RehydrateFromSnapshot ignored — an encounter is already active " +
+                        $"(state: {_stateMachine.State}). The snapshot is left for a later from-Idle rehydrate.");
+                    return false;
+                }
+
+                // Corrupt / unhonorable snapshot (NFR-3 — clear it so it never loops + log; the player loses the
+                // interrupted encounter, a corruption edge, but the app never crashes). CoerceNullCollections (on
+                // load) repaired null COLLECTIONS, but NOT semantic validity of individual fields — so rehydrate
+                // adds the SEMANTIC guards (Decision H): (a) empty Monsters; (b) an unrecognized State tag;
+                // (c) a Monster with a null/empty id (would propagate a null into the live ids + a later
+                // re-snapshot, NRE-ing downstream id-keyed lookups); (d) an anchors-vs-monsters length mismatch
+                // (breaks the load-bearing index-parallel invariant Story 6.3's re-spawn relies on).
+                bool corrupt =
+                    dto.Monsters.Count == 0 ||
+                    !TryMapStateTag(dto.State, out EncounterState target) ||
+                    dto.Anchors.Length != dto.Monsters.Count ||
+                    AnyMonsterIdNullOrEmpty(dto.Monsters);
+
+                if (corrupt)
+                {
+                    GameLog.Error(
+                        $"EncounterService.RehydrateFromSnapshot: corrupt snapshot (monsters: {dto.Monsters.Count}, " +
+                        $"anchors: {dto.Anchors.Length}, state: '{dto.State}') — clearing it without rehydrating " +
+                        "(NFR-3, never a half-encounter).");
+                    await ClearSnapshotLockedAsync(model).ConfigureAwait(false);
+                    return false;
+                }
+
+                // Restore the in-memory logical state from the DTO. Anchors + ids stay index-parallel (the
+                // length-match guard above enforces it); the scan flag re-adds a Monster to the per-encounter
+                // scanned set when its ScanProgress is set (Story 4.3's boolean-grained scan, round-tripped 0/1).
+                var anchors = new AnchorToken[dto.Anchors.Length];
+                Array.Copy(dto.Anchors, anchors, dto.Anchors.Length);
+
+                var ids = new string[dto.Monsters.Count];
+                var scanned = new HashSet<string>();
+                for (int i = 0; i < dto.Monsters.Count; i++)
+                {
+                    EncounterMonsterStateData m = dto.Monsters[i];
+                    ids[i] = m.MonsterId; // guaranteed non-null/non-empty by the corrupt guard above
+                    if (m.ScanProgress > 0f)
+                    {
+                        scanned.Add(m.MonsterId);
+                    }
+                }
+
+                var extras = new HashSet<ExtraKind>();
+                foreach (string tag in dto.AppliedExtras)
+                {
+                    if (TryMapExtraTag(tag, out ExtraKind kind))
+                    {
+                        extras.Add(kind);
+                    }
+                    else
+                    {
+                        // An unrecognized extra tag is skipped (forward-compat / corruption) — never a throw.
+                        GameLog.Warn(
+                            $"EncounterService.RehydrateFromSnapshot: skipping an unrecognized applied-extra tag '{tag}'.");
+                    }
+                }
+
+                // Drive the state machine FIRST (from Idle the only legal forward transition is BeginLure →
+                // Lured; the only `target` a non-corrupt snapshot carries is Lured — TryMapStateTag enforces it).
+                // Doing it before committing the field writes means a (should-be-unreachable) refusal leaves the
+                // live fields untouched — no half-restore. Clear the snapshot and bail on a refusal.
+                if (!_stateMachine.BeginLure())
+                {
+                    GameLog.Error(
+                        "EncounterService.RehydrateFromSnapshot: Idle → Lured was refused after validating the " +
+                        "snapshot (should be unreachable given the Idle pre-check). Clearing the snapshot.");
+                    await ClearSnapshotLockedAsync(model).ConfigureAwait(false);
+                    return false;
+                }
+
+                // Commit the validated state into the live fields (the machine is now Lured).
+                _activeAnchors = anchors;
+                _activeMonsterIds = ids;
+                _scannedThisEncounter.Clear();
+                foreach (string id in scanned)
+                {
+                    _scannedThisEncounter.Add(id);
+                }
+
+                _activeExtras.Clear();
+                foreach (ExtraKind kind in extras)
+                {
+                    _activeExtras.Add(kind);
+                }
+
+                // The spawn handles are process-local (released on teardown). The visual re-spawn is Story 6.3;
+                // the logical encounter restores with no live handles (the App/render layer re-activates them).
+                _activeSpawnHandles = Array.Empty<int>();
+
+                // Consume the snapshot in the SAME locked context: it represented "an encounter needs restoring"
+                // — that need is now met, the live encounter is the source of truth (re-snapshotted on the NEXT
+                // Shop trip). AWAITED clear+persist (ONE write, AR-8). On a clear fault, ROLL BACK the whole
+                // rehydrate (reset to Idle + clear the live fields) and report false — a left-behind snapshot
+                // with a Lured live machine would, after an app-kill, re-rehydrate the SAME snapshot on the next
+                // launch (a duplicate/zombie encounter). Better to report failure and let the caller retry.
+                if (!await ClearSnapshotLockedAsync(model).ConfigureAwait(false))
+                {
+                    _stateMachine.Reset();
+                    _activeAnchors = Array.Empty<AnchorToken>();
+                    _activeMonsterIds = Array.Empty<string>();
+                    _scannedThisEncounter.Clear();
+                    _activeExtras.Clear();
+                    GameLog.Error(
+                        "EncounterService.RehydrateFromSnapshot: the consume-clear persist failed — rolled back " +
+                        "the in-memory restore (Idle) so disk and memory stay consistent; the caller may retry.");
+                    return false;
+                }
+
+                GameLog.Info(
+                    $"EncounterService: rehydrated the encounter from snapshot ({ids.Length} monsters, " +
+                    $"{anchors.Length} anchors, {_activeExtras.Count} extras) → Lured.");
+                return true;
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>True if any monster entry has a null/empty id (a corrupt snapshot — Decision H semantic
+        /// guard). <c>CoerceNullCollections</c> repairs null collections but not null id STRINGS.</summary>
+        private static bool AnyMonsterIdNullOrEmpty(List<EncounterMonsterStateData> monsters)
+        {
+            foreach (EncounterMonsterStateData m in monsters)
+            {
+                if (m == null || string.IsNullOrEmpty(m.MonsterId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Clear <see cref="SaveModel.EncounterSnapshot"/> + persist in ONE write, WITH the shared lock
+        /// ALREADY HELD by the caller (the in-lock sibling of <see cref="ClearEncounterSnapshot"/>, which takes
+        /// the lock itself). Returns true on a durable clear; false on a persist fault / recovery swap (the
+        /// snapshot is reverted onto the captured ref). Never throws (NFR-3).</summary>
+        private async Task<bool> ClearSnapshotLockedAsync(SaveModel model)
+        {
+            if (model.EncounterSnapshot == null)
+            {
+                return true; // already clear — nothing to persist, treat as a successful no-op
+            }
+
+            EncounterSnapshotData priorSnapshot = model.EncounterSnapshot;
+            model.EncounterSnapshot = null;
+
+            try
+            {
+                await _saveService.SaveAsync().ConfigureAwait(false);
+
+                if (ReferenceEquals(_saveService.Current, model))
+                {
+                    return true;
+                }
+
+                model.EncounterSnapshot = priorSnapshot; // swap-branch revert onto the captured ref
+                GameLog.Error(
+                    "EncounterService: clearing the encounter snapshot rolled back — the save model was swapped " +
+                    "mid-operation.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                model.EncounterSnapshot = priorSnapshot;
+                GameLog.Error(
+                    $"EncounterService: clearing the encounter snapshot rolled back — persist failed. {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Null <see cref="SaveModel.EncounterSnapshot"/> + persist in ONE atomic write (AR-8) — the explicit
+        /// clear the App-tier (Epic-6 AppStateMachine) calls when an encounter ends NORMALLY after a Shop
+        /// round-trip, so a stale snapshot never rehydrates a dead encounter ([[failure-path-cleanup-parity]]).
+        /// The in-memory <see cref="EndEncounter"/> clears the IN-MEMORY state; this clears the PERSISTED
+        /// snapshot. A no-op (no write) when there is no snapshot. Never throws (NFR-3).
+        /// </summary>
+        public async Task<bool> ClearEncounterSnapshot()
+        {
+            await _mutationLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                SaveModel model = RequireModel();
+                if (model.EncounterSnapshot == null)
+                {
+                    return false; // nothing persisted — no write (distinct from the in-rehydrate clear, which
+                                  // treats "already clear" as a successful no-op so its rollback can proceed)
+                }
+
+                return await ClearSnapshotLockedAsync(model).ConfigureAwait(false);
+            }
+            finally
+            {
+                _mutationLock.Release();
+            }
+        }
+
+        /// <summary>Build the data-only snapshot DTO from the live in-memory encounter state (Story 5.4). Pairs
+        /// each lured id with its index-parallel anchor; maps the boolean per-encounter scan flag to the DTO's
+        /// <c>ScanProgress</c> float as 0/1 (Story 4.3 is boolean-grained); records the encounter-wide extras as
+        /// stable tags at the snapshot level.</summary>
+        private EncounterSnapshotData BuildSnapshotDto()
+        {
+            var anchors = new AnchorToken[_activeAnchors.Length];
+            Array.Copy(_activeAnchors, anchors, _activeAnchors.Length);
+
+            var monsters = new List<EncounterMonsterStateData>(_activeMonsterIds.Length);
+            foreach (string id in _activeMonsterIds)
+            {
+                monsters.Add(new EncounterMonsterStateData
+                {
+                    MonsterId = id,
+                    ScanProgress = _scannedThisEncounter.Contains(id) ? 1f : 0f,
+                    // AppliedBoosts stays empty — extras are encounter-wide (AppliedExtras below), not per-monster.
+                });
+            }
+
+            var extras = new List<string>(_activeExtras.Count);
+            foreach (ExtraKind kind in _activeExtras)
+            {
+                extras.Add(MapExtraKind(kind));
+            }
+
+            return new EncounterSnapshotData
+            {
+                Anchors = anchors,
+                Monsters = monsters,
+                AppliedExtras = extras,
+                State = StateTagLured, // only a Lured encounter is ever snapshotted (the SnapshotActiveEncounter guard)
+            };
+        }
+
+        // --- The stable enum ↔ tag maps (Story 5.4). Explicit switches (the ExtrasSystem map precedent), so a
+        //     renumber of the enum never silently changes a persisted tag, and an unrecognized tag is a typed
+        //     miss (handled by the caller as a corrupt/forward-compat path), never a throw.
+
+        private static string MapExtraKind(ExtraKind kind)
+        {
+            switch (kind)
+            {
+                case ExtraKind.StabilityBoost: return ExtraTagStabilityBoost;
+                case ExtraKind.NightveilFilter: return ExtraTagNightveilFilter;
+                default:
+                    // Append-only enum: a new member must add its tag here. Fall back to ToString so a future
+                    // member still round-trips by name rather than silently dropping (it then maps back via the
+                    // Enum.TryParse fallback in TryMapExtraTag).
+                    return kind.ToString();
+            }
+        }
+
+        private static bool TryMapExtraTag(string tag, out ExtraKind kind)
+        {
+            switch (tag)
+            {
+                case ExtraTagStabilityBoost: kind = ExtraKind.StabilityBoost; return true;
+                case ExtraTagNightveilFilter: kind = ExtraKind.NightveilFilter; return true;
+                default:
+                    // Forward-compat: a tag written by a future member round-trips by name. An unknown/garbage
+                    // tag is a typed miss (the caller skips it).
+                    return Enum.TryParse(tag, out kind) && Enum.IsDefined(typeof(ExtraKind), kind);
+            }
+        }
+
+        private static bool TryMapStateTag(string tag, out EncounterState state)
+        {
+            switch (tag)
+            {
+                case StateTagLured: state = EncounterState.Lured; return true;
+                default:
+                    // Only Lured is a valid snapshot state (snapshots are taken Lured-only). An empty/unknown
+                    // tag is a corrupt snapshot — a typed miss the caller treats as corrupt (never a throw).
+                    state = EncounterState.Idle;
+                    return false;
+            }
         }
 
         /// <summary>

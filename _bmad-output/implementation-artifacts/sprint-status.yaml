@@ -35,9 +35,9 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-10
-last_updated: 2026-06-15
+last_updated: 2026-06-16
 # epic-4 complete — all 7 stories done + retrospective done (2026-06-15)
-# epic-5 in-progress — 5.1, 5.2, 5.3 done (2026-06-15); next: 5.4 (top-up mid-encounter)
+# epic-5 in-progress — 5.1, 5.2, 5.3, 5.4 ALL done (2026-06-16); 5.4 = the encounter-snapshot convergence story. Epic 5 stories complete; retrospective is optional (run when ready).
 project: Veilwalkers
 project_key: NOKEY
 tracking_system: file-system
@@ -91,7 +91,7 @@ development_status:
   5-1-browse-and-purchase-credit-packs-via-google-play-billing: done
   5-2-reconcile-purchases-exactly-once: done
   5-3-grant-and-consume-the-guaranteed-rare-lure: done
-  5-4-top-up-mid-encounter-without-losing-the-encounter: backlog
+  5-4-top-up-mid-encounter-without-losing-the-encounter: done
   epic-5-retrospective: optional
 
   # Epic 6: Visual Identity, Navigation & Onboarding Shell
