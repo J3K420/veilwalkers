@@ -165,6 +165,10 @@ The Pumpkin Patch design system as a shared foundation other epics consume: fram
 **FRs covered:** FR-1 (onboarding/disclosure UI)
 **UX:** UX-DR1, UX-DR2, UX-DR3, UX-DR4, UX-DR8, UX-DR9, UX-DR14, UX-DR15, UX-DR17, UX-DR18, UX-DR19
 
+### Epic 8: Render, Scene & Device-Build Pass (on-device vertical slice) — sequenced BEFORE Epic 7
+The on-device vertical slice that finally makes the MVP renderable and installable. Owns every render/scene/device-build entry that Epics 2–6 deferred uniformly, plus AR-21's five untouched Play-submission blockers (Epic-6 retro Action Item #4). The logic floor is done and exhaustively proven (674/674 EditMode green); Epic 8 does **not** re-decide a single contract — it RENDERS, WIRES, and BUILDS what already exists, inverting the UI-presenter altitude split to deliver the deferred view/scene/binding/device layer beneath the green presenters. **Verifiability invariant (the automator is bound by it):** the automator NEVER instantiates a View MonoBehaviour, runs `Bootstrap.Awake`, or drives `SceneManager` in EditMode — every headless pin is exactly one of (1) a file/YAML/asmdef text read off disk (the Pit/EditorBuildSettings precedent), (2) a pure-logic presenter/plan/token assertion (the MaterializationPlan/AccessibilityContrast precedent), or (3) an enum/contract shape pin (the LoadPhase precedent); the device-only parts (real AR, visual polish, frame-rate/cold-start budgets, `.aab` install/smoke, TalkBack, rendered ≥48dp bounds) are an explicitly-owned release-gate checklist and are **never auto-claimed done**. This is the path to a real, Play-submittable MVP; **sequenced before the post-MVP Epic 7**.
+**FRs covered:** the render/scene/device half of FR-1..FR-14 (the deferred view/scene/binding/device layer) · **Arch:** AR-21 (Play-submission blockers), AR-1 (build config), AR-9/AR-10/AR-14 (AR-rig render), NFR-1, NFR-3, NFR-5 (device budgets)
+
 ### Epic 7: Post-MVP Seam — The Pit (architecture only, NOT built)
 The deferred signature feature. Reserve the seam only: `Assets/Veilwalkers/Pit/` folder stub (no asmdef until real code), a documented "reuse AR session + EncounterService patterns" note, and the carried FR-15–17 specs so the emotionally load-bearing differentiator survives planning. **No MVP stories are implemented in this epic.**
 **FRs covered:** FR-15, FR-16, FR-17 (all deferred)
@@ -977,4 +981,296 @@ So that the post-MVP signature feature can be added later without retrofitting t
 **Given** the deferred specs
 **When** planning continues
 **Then** FR-15 (place Pit + Miniaturize 1–2 Credits), FR-16 (host/resolve fights 1 Credit/free with limits), and FR-17 (Pit credit sinks: boost / revive / arena effects) remain documented as post-MVP scope.
+
+---
+
+## Epic 8: Render, Scene & Device-Build Pass (on-device vertical slice)
+
+The on-device vertical slice that finally makes the MVP renderable and installable: Epic 8 owns every render/scene/device-build entry that Epics 2–6 deferred uniformly, plus AR-21's five untouched Play-submission blockers (Action Item #4 of the Epic 6 retro). The logic floor is done and exhaustively proven (674/674 EditMode green); Epic 8 does **not** re-decide a single contract — it RENDERS, WIRES, and BUILDS what already exists, inverting the UI-presenter altitude split to deliver the deferred view/scene/binding/device layer beneath the green presenters. Sequenced **before** the post-MVP Epic 7.
+
+**Verifiability invariant (binds the automator):** the automator NEVER instantiates a View MonoBehaviour, runs `Bootstrap.Awake`, or drives `SceneManager` in EditMode — all View-bind, scene-load/unload, and `OnEnable`/`OnDisable` verification is device/PlayMode. Every headless pin must be exactly one of (1) a file/YAML/asmdef text read off disk (the Pit/EditorBuildSettings precedent), (2) a pure-logic presenter/plan/token assertion (the MaterializationPlan/AccessibilityContrast precedent), or (3) an enum/contract shape pin (the LoadPhase precedent). Device-only parts are an explicitly-owned release-gate checklist, **never auto-claimed done**. Respects the acyclic graph (`Core ← {Persistence,Economy,Monsters} ← {AR,Encounter,Billing} ← App ← UI`); introduces no new illegal edges.
+
+**Sequencing:** data-first (8.1 build config as text) → containers (8.2 scenes + build order + Bootstrap registration closure) → the AR rig + device glue (8.3) → thin Views/navigation/backgrounding pump (8.4) → the chunky render layer + Billing device glue (8.5) → the accessibility render floor (8.6) → the signed `.aab` + on-device release gate (8.7, pure device-checklist, depends on all prior).
+
+### Story 8.1: Own AR-21's Play-submission blockers and pin the build config as data
+
+As a developer preparing the first Play-submittable build,
+I want the five AR-21 Play-submission blockers explicitly owned and the reproducible build settings pinned as committed data, with the per-machine/secret pieces captured as a documented checklist,
+So that a fresh clone (and CI) builds a signed, correctly-identified `.aab` against Play's moving floor — closing the AR-21 debt the retro flagged as untouched for three epics (Action Item #4).
+
+**Verifiability:** mixed.
+
+**Acceptance Criteria:**
+
+**Given** `ProjectSettings/ProjectSettings.asset`
+**When** `applicationIdentifier.Android` is read
+**Then** it is a real bundle id (e.g. `com.veilwalkers.app`), NOT the template default `com.UnityTechnologies.*` — asserted by an EditMode test that parses `ProjectSettings.asset` as TEXT off disk (the Pit/EditorBuildSettings disk-read precedent; the asset is never loaded by running the player).
+
+**Given** `ProjectSettings/ProjectSettings.asset`
+**When** `AndroidTargetSdkVersion` is read
+**Then** it is an explicit pinned integer at or above Play's 2026-06 minimum floor (not 0/Automatic) and `AndroidMinSdkVersion` remains 24 (ARCore floor); the pinned floor value AND its source date are recorded in `CLAUDE.md` or a build guide.
+
+**Given** the build-output format
+**When** the project is built
+**Then** Android App Bundle (`.aab`) output is enforced reproducibly — committed to `ProjectSettings` or via a committed build script that sets `buildAppBundle:true` — so a fresh clone does not rely on the gitignored `EditorUserBuildSettings`; the headless check asserts the committed setting or the build-script presence as text, NOT a real build.
+
+**Given** the EDM4U Android Gradle template + resolved-artifact policy
+**When** the decision is recorded
+**Then** `CLAUDE.md` states whether `mainTemplate.gradle` and `Assets/Plugins/Android/*.aar|*.jar|*.srcaar` are committed or regenerated post-clone, with the rationale and the post-clone EDM4U-run requirement.
+
+**Given** Android signing
+**When** the build guide is written
+**Then** it documents keystore/`keystore.properties` generation + env-var/vault storage (files stay gitignored, never committed) and the build script references them — the headless half verifies the keystore exclusions remain in `.gitignore` (text read); the actual keystore generation is a device/secret checklist item.
+
+**Given** the scripting + arch config from Story 1.1
+**When** `ProjectSettings.asset` is asserted as text
+**Then** IL2CPP backend and ARM64 architecture remain set (regression guard against template drift).
+
+**Device checklist (not auto-claimed done):** generate the actual keystore + `keystore.properties` on a build machine / CI secret store; run EDM4U post-clone to materialize Android resolved artifacts and confirm the policy produces a buildable Gradle project; invoke a real build and confirm the `.aab` toggle produces App Bundle output.
+
+### Story 8.2: Author the game scenes, set the final build order, and close the Bootstrap registration seams
+
+As a developer assembling the runnable surface set,
+I want Bootstrap + the four non-AR game scenes authored, a minimal AR Hunt scene reserved at its build slot, SampleScene removed, the six-slot build order pinned, the on-disk `Bootstrap.unity` EconomyConfig assigned, and the MonsterDatabase-gated CodexService/EncounterService registration seams closed in Bootstrap,
+So that every later View, navigation transition, and device-glue component has a real scene to live in and a fully-wired GameServices to resolve from — and no dead template content ships.
+
+**Verifiability:** mixed.
+
+**Acceptance Criteria:**
+
+**Given** `ProjectSettings/EditorBuildSettings.asset`
+**When** scenes are registered
+**Then** SampleScene (guid `99c9720ab356a0642a771bea13969a05`, currently at index 1) is removed and the enabled scene list is exactly `Bootstrap(0) → Onboarding(1) → Home(2) → AR Hunt(3) → Codex(4) → Shop(5)`, each `enabled:1` — asserted by an EditMode test parsing `EditorBuildSettings.asset` as TEXT off disk and confirming each path resolves to an EXISTING `.unity` asset on disk.
+
+**Given** the AR Hunt slot (index 3)
+**When** 8.2 completes
+**Then** a MINIMAL placeholder AR Hunt `.unity` scene asset exists on disk so the scene-list check passes at 8.2-done; the AR-rig CONTENTS (ARSession/ARSessionOrigin/managers) are authored INTO this existing scene by Story 8.3 (ownership is split — 8.2 reserves the asset, 8.3 fills the rig).
+
+**Given** `Assets/Scenes/SampleScene.unity`
+**When** the build is assembled
+**Then** the dead template scene is no longer in the enabled build list (de-registration confirmed by the scene-list text check; physical asset deletion is optional cleanup).
+
+**Given** `Bootstrap.cs` in scene 0
+**When** the `LoadPhase` staging CONTRACT is asserted in EditMode
+**Then** ONLY the headless-truthful pins run: (a) the EXISTING `LoadPhaseContractTests` enum shape+order pin `{EssentialSync, WarmupAsync, Ready}` and (b) the `AR.Tests` does-NOT-warm structural guard (ArSessionService construction issues no `StartAsync`). The RUNTIME staging behaviors are NOT EditMode-runnable (they need `Bootstrap.Awake` on a `[DefaultExecutionOrder(-1000)]` MonoBehaviour in a scene) and are owned by the device/PlayMode checklist.
+
+**Given** the on-disk `Bootstrap.unity`
+**When** the MonoBehaviour block is asserted
+**Then** a NEW scene-YAML TEXT assertion confirms the Bootstrap `m_Script` guid is present at scene 0 AND the serialized `_economyConfig` field is assigned to an `EconomyConfig` asset fileID/guid — this is genuinely headless via YAML text read and is CURRENTLY UNMET (the on-disk `Bootstrap.unity` MonoBehaviour block has no `_economyConfig` reference); the asset path is documented.
+
+**Given** `MonsterDatabase.asset` is authored
+**When** `WireServices` is updated
+**Then** Bootstrap constructs `CodexService(saveService, monsterDatabase, clock)` and registers it, constructs `LureSystem/CaptureSystem/SlaySystem/EncounterService` (passing the SHARED `economyMutationLock`) and registers it, and wires `EncounterService` as the second `IInsufficientCreditsSource` + the `IEncounterSnapshotPort` adapter (replacing the `NoEncounter`/null seams). The headless guards: `AcyclicDependencyTests` stays green (no new illegal asmdef edge) and the registration code compiles; whether GameServices RESOLVES both services post-boot is a runtime claim owned by the device/PlayMode checklist.
+
+**Given** the acyclic assembly graph
+**When** the registration seams are closed
+**Then** no new asmdef edge is introduced beyond the `AcyclicDependencyTests` allowed matrix (headless guard).
+
+**Device checklist (not auto-claimed done):** runtime staging behavior (WireServices synchronous, warmup not awaited before Ready, `GameServices.IsReady` false until wired, post-load hooks fire-and-forget); GameServices resolves CodexService + EncounterService post-boot; visual layout/composition of each authored scene; each scene actually loads at runtime in build order on device.
+
+### Story 8.3: Author the AR-rig scene contents and implement its #if UNITY_ANDROID device glue
+
+As a developer delivering placed, occluded, anchored monsters on a real device,
+I want the AR Foundation rig authored into the AR Hunt scene reserved by 8.2 and the `ArcoreSession` / `ArcoreAnchorProvider` / `GameObjectSpawnSink` device bodies wired to live AR subsystems with a pooled monster prefab,
+So that the green AR logic layer (`ArSessionService`, `PlaneAnchorService`, `AnchorRestoreService`, `MonsterSpawner`) actually renders camera, planes, anchors, occlusion, lighting and pooled spawns on hardware.
+
+**Verifiability:** device-checklist.
+
+**Acceptance Criteria:**
+
+**Given** the AR Hunt `.unity` scene reserved by 8.2 (index 3)
+**When** the rig is authored INTO it
+**Then** the scene asset declares ARSession, ARSessionOrigin, AR camera with camera-background, ARPlaneManager, ARAnchorManager, ARRaycastManager, AROcclusionManager, and ARCameraManager — confirmed present by a scene-asset-as-TEXT component-presence check off disk (no scene is loaded by the player).
+
+**Given** `ArcoreSession.cs`
+**When** the `#if UNITY_ANDROID && !UNITY_EDITOR` body runs on device
+**Then** it starts/stops/queries the scene ARSession, awaits `ARSession.state` for tracking-ready, and reports `IsSupported`; the editor `#else` stub stays the green no-op. NOTE: the device body is EXCLUDED from the EditMode compile entirely and receives ZERO headless coverage — only the `#else` stub's inert behavior is headless-asserted.
+
+**Given** `ArcoreAnchorProvider.cs` device body (the real type implementing `IArAnchorProvider`; there is NO `ArcorePlaneAnchorProvider` — it was absorbed in Story 3.5)
+**When** called
+**Then** `TryCreateAnchor` calls `ARAnchorManager.AddAnchor(pose)`, the re-acquire path re-resolves a saved `TrackableId`, and the relocation-candidate path queries `ARPlaneManager` + `ARRaycastManager`; the editor `#else` stub stays inert. The device body is excluded from the EditMode compile — ZERO headless coverage.
+
+**Given** `GameObjectSpawnSink.cs` device body
+**When** `Instantiate`/`Activate`/`Deactivate` run
+**Then** a monster prefab is instantiated/retrieved from the pool, posed to the anchor, and shown/returned; the editor `#else` stub returns synthetic ids. The device body is excluded from the EditMode compile — ZERO headless coverage.
+
+**Given** `AROcclusionManager` + `ARCameraManager`
+**When** monsters render on device
+**Then** real-world foreground occlusion and environmental light estimation apply to spawned monsters (Story 3.4 AC-1 render) — device-only.
+
+**Given** `AnchorRestoreService` returns `Restored`/`RelocatedToPlane` on device
+**When** re-anchor runs
+**Then** the spawned GameObject is MOVED/re-parented to the restored Pose; the pose DECISION stays the already-green Story-3.5 `AnchorRestoreServiceTests` (carried forward as a headless regression precondition — the device gate owns only the GameObject MOVE, not the decision).
+
+**Given** the editor stays headless
+**When** EditMode tests run
+**Then** the carried-forward `MonsterSpawner` cap/pool ACCOUNTING regression (`MonsterSpawnerTests` against `FakeSpawnSink` — `InstantiateCalls` stops at the cap, a spawn-after-release REUSES via `Activate` not `Instantiate`) stays GREEN with `GameObjectSpawnSink` as the production sink; no ARSession is required and CI asserts no device milliseconds.
+
+**Device checklist (not auto-claimed done):** live ARSession start/stop + tracking-ready; real plane detection, anchor add/re-acquire, raycast relocation; pooled prefab Instantiate→pose→activate / despawn→deactivate under the spawn cap; AROcclusionManager occlusion + ARCameraManager lighting on spawned monsters; re-anchor actually MOVES the GameObject to the restored pose; monster prefab visual authoring (model, materials, Nightveil Filter shader, materialization/Lure particles).
+
+### Story 8.4: Wire the thin Views/Presenters, AppStateMachine-driven navigation, the AR backgrounding pump, and the daily-reward affordance
+
+As a player moving through Onboarding, Home, AR Hunt, Codex and Shop,
+I want a thin MonoBehaviour View per surface that resolves its green presenter via GameServices and routes navigation intents through AppStateMachine, with AppStateMachine driving scene load/unload, ArSessionView pumping OnApplicationPause, and the daily-reward affordance wired,
+So that every surface is reachable, AR lifecycle survives backgrounding, the once-per-day reward is claimable, and every CTA/shortfall event flows through the already-proven navigation logic without re-deciding it.
+
+**Verifiability:** mixed.
+
+**Acceptance Criteria:**
+
+**Given** each surface
+**When** its View is authored
+**Then** OnboardingView/HomeView/ArHudView+ArSessionView+ArSafetyView+ArPlacementView+CameraPermissionView/CodexGridView+CodexDetailView/ShopView each resolve their presenter via `GameServices.Get` and stay logic-free per the UI-presenter altitude split (bind + forward only); the actual View MonoBehaviour binding is verified on device/PlayMode (there is NO headless View-instantiation precedent).
+
+**Given** AppStateMachine
+**When** navigation logic is asserted headlessly
+**Then** the EXISTING `App.Tests` pins cover `OnSurfaceChanged` event emission + `ShopReturnSurface` capture for the round-trip. NOTE AppStateMachine does NOT call `SceneManager` — the actual scene LOAD/UNLOAD performed by the View consumer is device/PlayMode, not headless.
+
+**Given** the AR-entry affordance on Home
+**When** it becomes visible/likely
+**Then** ArSessionView triggers `ArSessionService.PrewarmAsync()` (NOT Bootstrap; the warmup-ownership rule) and degrades gracefully while unplaced — verified on device/PlayMode.
+
+**Given** the placed ArSessionView
+**When** the app is backgrounded/foregrounded on device
+**Then** ArSessionView pumps `OnApplicationPause` into ArSessionService so lifecycle loss raises `OnArSessionInterrupted` and a permission-revoked-on-resume tears down to Cold + routes to the CameraPermissionView re-grant, and the EncounterStateMachine Suspends/recovers — closing the `deferred-work.md:254` 'ArSessionView pumps OnApplicationPause but is unplaced/uncalled' item. The pause/resume DECISION is already green in `AR.Tests` (carried forward); only the View's lifecycle pump is device.
+
+**Given** the Home daily-reward affordance
+**When** the View binds
+**Then** it resolves the registered `IDailyRewardService`, shows/hides on the 'not claimed today' rule, and routes the claim through the service (claim logic is headless at the service level; the affordance bind is device/PlayMode).
+
+**Given** `ReturnFromShopAsync(ShopResume)`
+**When** the AR-rig rehydrates on device
+**Then** `EncounterService.RehydrateFromSnapshot` drives `AnchorRestoreService.TryRestore` + `MonsterSpawner` re-spawn to re-anchor pooled monsters (logical state from snapshot is already-green headless; visual persistence from re-spawn is device).
+
+**Given** the acyclic graph
+**When** the View layer is wired
+**Then** UI references only App/Economy/AR/Billing per the existing matrix and `AcyclicDependencyTests` stays green (headless guard).
+
+**Device checklist (not auto-claimed done):** each View resolves its presenter and forwards intents; actual SceneManager load/unload on `OnSurfaceChanged` incl. the Shop round-trip; ArSessionView prewarm at the affordance + graceful degrade; OnApplicationPause backgrounding pump → lifecycle loss → Suspended/recovery; daily-reward affordance show/hide + claim routing; Shop round-trip visually rehydrates the exact encounter (safety warning does not re-fire); prewarm actually shaves cold-start (measured in 8.7).
+
+### Story 8.5: Paint the chunky Pumpkin Patch render layer and wire the Shop billing device glue
+
+As a player experiencing the game's visual identity in motion,
+I want the deferred render layer painted into the wired views — materialization/Lure tween, chunky components, live bindings, Codex 3-state reveal, state treatments, pack cards/top-up sheet, the Guaranteed-Rare Lure use-affordance, the daily-reward render — plus the Unity IAP device bodies for real purchase/acknowledge,
+So that the surfaces look and feel like the Pumpkin Patch design system and the Shop drives real Play Billing, all rendering decisions already made by the green presenters.
+
+**Verifiability:** mixed.
+
+**Acceptance Criteria:**
+
+**Given** `MaterializationView.Render`
+**When** an encounter materializes on device
+**Then** it drives the tiered entrance tween over `plan.DurationSeconds` (T1 Pop-in…T5 Breach) — this IS the Lure materialization VFX, authored HERE FIRST — the Breach camera glitch shader, ambiance per `plan.Ambiance.EffectiveIntensity`, action-bar show/hide, screen-shake per `plan.ScreenShake`, and a caption+visual cue when `plan.RequiresCaptionCue` (never audio-only), reading plan flags and never re-deciding them. The render is device; the plan flags are the already-green presenter output.
+
+**Given** the Lure materialization VFX authored above
+**When** re-anchor relocation runs (`RelocatedToPlane`)
+**Then** the 'pulled back through the Veil' relocation beat REUSES that same Lure VFX — the VFX-asset-before-relocation-beat ordering is intra-story (authored in this story's first AC, reused here) so the beat never dangles on an asset authored only as a device line.
+
+**Given** `ChunkyComponentView`
+**When** components render on device
+**Then** the 6 prefab variants (chunky button, credit pill, pack card, Codex slot, rarity badge, wordmark) bind UGUI Image/Text with 9-slice outline, the hard-shadow (`blur==0`, sourced from the 6.1/6.2 descriptor — the `blur==0`/corner-radius TOKEN value is the only headless slice, asserted at the descriptor source), pressed-shadow shrink, ALL-CAPS labels, glyphs, and corner-radius tokens.
+
+**Given** the credit pill in Home/AR-HUD
+**When** balance changes on device
+**Then** it reads `CreditService.OnCreditsChanged` live (the live-binding VALUE is owned by HomePresenter — already green; the View bind is device), updates the integer, animates the felt-descent pulse, and shows cost-before-spend.
+
+**Given** `CodexGridView`
+**When** the 67-grid renders on device
+**Then** slots show 3 states (Discovered full-art+caught-stamp / silhouette `???` / blank `?`), the slot-flip + count-tick reveal plays on first discovery, the new-tier silhouette fade-in plays on tier unlock, and `CodexDetailView` binds art/badge/lore/stats or the plain 'Not yet discovered.' copy (reveal DECISION is the already-green presenter; render is device).
+
+**Given** StateTreatmentPresenter outputs
+**When** the app loads/recovers on device
+**Then** the AR-HUD renders the veil-parting wipe (never a spinner), plane-not-found coaching, the 'Pulled back through the Veil' restore beat, the camera-denied re-grant screen, and the ArSafetyView blocking/fast cards with plain high-contrast safety copy (treatment DECISION is already-green; render is device).
+
+**Given** pack cards + the top-up sheet
+**When** the Shop renders on device
+**Then** pack cards show base+bonus with localized prices from `BillingService.FetchLocalizedPricesAsync` and soft-nudge tags, and the top-up sheet is non-blocking (one level deep per AppStateMachine `OverlayLevel`, never buries the live encounter) and reflects the balance on purchase success / leaves it unchanged on cancel (price VALUES + overlay-depth rule already-green; render is device).
+
+**Given** the Shop Guaranteed-Rare Lure affordance
+**When** the player holds N Guaranteed-Rare Lures
+**Then** the chunky 'you have N Guaranteed-Rare Lures — use one' button renders reading `SaveModel.GuaranteedRareLures`, an on-brand confirmation gates the use, and confirming routes the `LureKind.GuaranteedRare` entry point that Story 5.3 shipped — closing the `deferred-work.md:78` 'button + confirmation deferred to Epic 6' item.
+
+**Given** `UnityIapStoreAdapter`
+**When** the `#if UNITY_ANDROID && !UNITY_EDITOR` bodies run on device
+**Then** `PurchaseAsync` drives `IStoreController` for a real purchase and `AcknowledgeAsync` confirms/consumes by order id (atomic with `PurchaseReconciler`, AC-4); the editor `#else` paths stay the green stubs (the ONLY headless slice is that the `#else` stubs compile + stay inert — the device body is excluded from the EditMode compile).
+
+**Device checklist (not auto-claimed done):** all tween/glitch/ambiance/shake visuals across T1–T5; the relocation beat reusing the Lure VFX; chunky component render (outline, hard shadow, pressed, glyphs); credit-pill pulse + live balance; Codex slot-flip/count-tick/tier fade-in; state-treatment renders; non-blocking top-up sheet over a live encounter; Guaranteed-Rare Lure button + confirmation + routing; daily-reward render; real Play Billing purchase + acknowledge round-trip with localized prices; sprite/font asset authoring (wordmark, 9-slice, badges, glyphs, palette, typography); screen-shake + post-processing + audio stings.
+
+### Story 8.6: Land the accessibility render floor across all surfaces
+
+As a player with accessibility needs,
+I want the rendered surfaces to enforce ≥48dp tap targets, dynamic-type reflow, WCAG contrast, reduced-motion taming, and TalkBack announcements with symmetric live-event subscribe/unsubscribe,
+So that the game is playable and the dread still reads safely, binding the green 6.6 accessibility decision layer to the now-rendered chrome.
+
+**Verifiability:** mixed.
+
+**Acceptance Criteria:**
+
+**Given** the token palette + `AccessibilityContrast`
+**When** contrast is asserted
+**Then** body contrast ≥4.5:1 and large-text ≥3:1 over the FULL rendered token palette, and the muted text color (`#B9A6C9`) is NEVER equal to `AccessibilityContrast.SafetyTextColor` — a pure-logic EditMode contrast computation over the tokens (headless); the perceptible on-device contrast is device-confirmed.
+
+**Given** `PumpkinPatchTokens.MinTapTargetDp` (=48)
+**When** tap targets are asserted
+**Then** the headless pin asserts the `MinTapTargetDp` TOKEN value; the actual rendered ≥48dp RectTransform bounds (which need a Canvas + CanvasScaler layout pass + device DPI) are device-only — final-confirmed by physical touch on device.
+
+**Given** the reduced-motion setting
+**When** the MaterializationPresenter computes the plan
+**Then** `MaterializationPlan.ReducedMotion` is true and the plan zeroes `ScreenShake` + clears `BrandedGlitch` + tames Ambiance — a pure-logic EditMode pin at the PRESENTER/PLAN level (already-green seam). The actual View RENDER taming (static branded transition, no strobe) is device.
+
+**Given** live-event Views
+**When** subscription symmetry is asserted headlessly
+**Then** the pin tests the SUBSCRIBABLE level (e.g. `credits.HasShortfallSubscriber` is false after Dispose, the existing `AppStateMachineTests` precedent), NOT the View's `OnEnable`/`OnDisable` (Unity lifecycle callbacks only fire on an active MonoBehaviour — device/PlayMode).
+
+**Given** TalkBack platforms
+**When** `AccessibilityAnnouncer` composes the announce string
+**Then** the role+state label composition (`AccessibilityLabel.ToScreenReaderString` / the announce strings) is a pure-logic EditMode pin (headless); the actual `AccessibilityManager.announce` via `AndroidJavaObject` and the focus/state-change announcement are device-only, degrading to a no-op when unavailable.
+
+**Given** dynamic type at large/xlarge on device
+**When** controls reflow
+**Then** chunky labels do not truncate, shadows stay proportional, tap targets stay ≥48dp, and safety copy stays readable — device-only.
+
+**Given** materialization/state-change audio
+**When** it plays
+**Then** the structural 'a caption cue is REQUIRED whenever an audio sting exists' guarantee (`MaterializationPlan.RequiresCaptionCue ⇐ HasAudioSting`) is a pure-logic EditMode pin (headless); the perceptible concurrent visual/caption render is device (UX-DR17).
+
+**Device checklist (not auto-claimed done):** rendered ≥48dp RectTransform bounds; View `OnEnable`/`OnDisable` lifecycle symmetry on an active MonoBehaviour; TalkBack announces role+state/balance/count-tick via AndroidJavaObject; dynamic-type reflow at large/xlarge; reduced-motion VISUAL render (static transition, no shake/strobe); audio+caption pairing perceptible.
+
+### Story 8.7: Assemble the signed .aab and run the on-device release gate
+
+As a release owner taking Veilwalkers to a Play-submittable state,
+I want a signed IL2CPP/ARM64 `.aab` assembled, installed on a reference mid-range ARCore device / Firebase Test Lab, AR-smoke-tested, and measured against NFR-1/NFR-5, with the Play Console readiness checklist confirmed,
+So that the MVP is provably renderable, installable, and submission-ready — the on-device vertical slice the whole epic exists to produce.
+
+**Verifiability:** device-checklist (no part auto-claimed done by the headless gate except the carried-forward 8.1 build-config regression).
+
+**Acceptance Criteria:**
+
+**Given** the build config from 8.1 and the scenes/rig/render from 8.2–8.6
+**When** the Unity pipeline runs
+**Then** a signed `*.aab` is produced with IL2CPP backend, ARM64, AR Required, and the real applicationId.
+
+**Given** the `.aab`
+**When** installed via adb / Firebase Test Lab on a mid-range ARCore device (API ≥24)
+**Then** the app installs with no errors, launches, reaches Home, and shows no IL2CPP-stripping or missing-reference crashes on cold start; this also exercises the runtime Bootstrap staging contract (WireServices synchronous, warmup not awaited before Ready, GameServices resolves CodexService/EncounterService) that was NOT EditMode-runnable in 8.2.
+
+**Given** the installed app
+**When** AR is smoke-tested
+**Then** onboarding completes, AR mode entry shows the AR Safety Warning (dismissible), the camera-permission flow works, ARCore initializes, a plane is detected with visual guidance, and no uncaught AR exceptions occur (NFR-3).
+
+**Given** AR mode under sustained spawning
+**When** measured
+**Then** frame rate is ≥30 FPS sustained on the reference device (NFR-1) and launch→first-plane-anchor is within budget with prewarm ON and OFF, recorded as p50/p95/p99 across 5–10 runs (NFR-5).
+
+**Given** the AR recovery path
+**When** an anchor is lost mid-encounter on device
+**Then** `AnchorRestoreService.TryRestore` (the already-green pose DECISION, carried forward) drives re-anchor (Restored), nearest-plane relocation (RelocatedToPlane + the 8.5 Lure-VFX 'pulled back through the Veil' beat), or suspension (Failed) and the encounter resumes — the AC explicitly depends on the 8.5 relocation beat + the 8.3 re-anchor GameObject MOVE existing, so recovery is never attempted before the VFX asset exists.
+
+**Given** Google Play Console readiness
+**When** the listing is prepared
+**Then** the Teen content rating, mandatory AR safety warning, and camera-permission disclosure (before the OS prompt) are confirmed, and a Firebase Test Lab matrix (selected devices, API 24–34) records its passing threshold (0 crashes, min FPS floor at p50).
+
+**Given** this is a device release gate
+**When** CI runs
+**Then** no part of 8.7 is auto-claimed done by the headless gate — every item except the carried-forward 8.1 build-config regression is an explicitly-owned release-gate checklist entry verified on hardware.
 

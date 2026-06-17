@@ -7,6 +7,14 @@
 - **Never commit secrets** — keystores (`*.jks`/`*.keystore`), `google-services.json`, `keystore.properties`, Play Billing service-account keys. All are gitignored; keep it that way.
 - The Unity project is initialized via **Unity Hub**, not by hand-writing project files (Unity generates `Library/`, `.csproj`, `.sln` — all gitignored).
 
+## Build & release (AR-21 / Story 8.1)
+
+- **Full build/sign/EDM4U guide: [`docs/build-guide.md`](docs/build-guide.md).** It owns the Play-submission config; `BuildConfigGuardTests` regression-guards it.
+- **Bundle id (PERMANENT once published):** `com.veilwalkers.app`. Do not change for a live Play listing.
+- **Android target-SDK floor: API 35** (Play floor *as of 2026-06* — Google raises it ~yearly, **re-check before each submission**). Single source of truth = `MinPlayTargetSdk` in `BuildConfigGuardTests.cs`; the build guide cites it. Min SDK stays **24** (ARCore floor).
+- **Build the `.aab`:** menu *Veilwalkers → Build Android App Bundle (.aab)*, or headless `-executeMethod Veilwalkers.EditorTools.VeilwalkersBuilder.BuildAndroidAppBundle`. Signing material comes from `VEILWALKERS_KEYSTORE_*` env vars, never a committed file.
+- **EDM4U:** Gradle templates + resolved `Assets/Plugins/Android/*.aar` are gitignored; run *Assets → External Dependency Manager → Android Resolver → Force Resolve* after a fresh clone.
+
 ## What this is
 
 Veilwalkers is an Android AR monster-hunting / collection game. The player uses the phone camera to **lure, scan, capture, and slay** monsters anchored in real-world space via AR. Free-to-play, funded by "Monster Credits" (Google Play Billing). Teen-rated, stylized-spooky tone (think *Gravity Falls* / *Stranger Things*).

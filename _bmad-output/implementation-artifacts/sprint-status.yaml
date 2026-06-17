@@ -36,6 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-16
+# epic-8 SCOPED 2026-06-16 (Epic-6 retro Action Item #2, finally executed) — "Render, Scene & Device-Build Pass": the on-device vertical slice owning every deferred render/scene/device entry + AR-21's five Play-submission blockers. 7 stories (8.1-8.7), all backlog. TRUTHFUL VERIFIABILITY SPLIT (James's decision, this run): 8.1 (build config as ProjectSettings text) + 8.2 (scene list + Bootstrap.unity YAML as text, registration closure + acyclic guards) carry real headless-verifiable content → the story-automator can drive them to a green EditMode gate. 8.3-8.7 are overwhelmingly DEVICE-ONLY (real AR rig + glue, chunky render, signed .aab, on-device AR smoke + NFR-1/NFR-5 budgets) — their headless "parts" are mostly carried-forward already-green regression pins, so they are DEVICE-CHECKLIST stories, NOT auto-claimed done. The automator INVARIANT: never instantiate a View, run Bootstrap.Awake, or drive SceneManager in EditMode. Confirmed factual gaps the scope grounded: Bootstrap.unity has NO _economyConfig assigned (device build would fail-fast at boot); applicationIdentifier is still the URP template default com.UnityTechnologies.*; AndroidTargetSdkVersion is 0/Automatic; SampleScene still ships at build index 1. Sequenced BEFORE the post-MVP Epic 7.
 # epic-7 in-progress — 7.1 (Reserve the Pit seam) DONE 2026-06-16, the FIRST + ONLY Epic-7 story. Architecture-only, post-MVP, ZERO gameplay: a Pit-folder README (carried FR-15/16/17 specs + ArSessionService/EncounterService reuse note, cited) + a non-vacuous regression guard (no .asmdef / no gameplay .cs under Assets/Veilwalkers/Pit/), mutation-tested. 674/674 EditMode green (+4). CR: 13 raw → 5 confirmed (3 patches) + 5 defer (all pre-existing AcyclicDependencyTests robustness) + 2 sanctioned + 1 FP, 0 AC violations. Independent of the Epic-8 render defer (run ahead of Epic 8 at James's direction). Epic 7 stays in-progress until the retrospective (epics not auto-closed; retro is optional for Epic 7).
 # epic-6 RETROSPECTIVE DONE 2026-06-16 (epic-6-retro-2026-06-16.md) — verdict: dev-discipline lessons (struct-invariant, test-quality, failure-path parity) landed + compounded; the deferred render/scene/AR-rig/device-build layer is the standing un-retired debt (6/6 stories deferred it; ownerless across deferred-work.md). SIGNIFICANT DISCOVERY: nothing in Epics 2-6 is renderable/installable on a device. DECISION (James): create a NEW "Epic 8: Render, Scene & Device-Build Pass" owning all deferred render entries + AR-rig scene + device build + AR-21, sequenced BEFORE the post-MVP Epic 7 Pit seam. 6 action items recorded (AI#1 InternalsVisibleTo on UI; AI#2 scope Epic 8; AI#4 decide AR-21 fate). Epic 7 (7.1) confirmed ready as a half-day no-asmdef stub, independent of the render defer.
 # epic-6 ALL 6 STORIES DONE (6.1-6.6) 2026-06-16 — 6.6 = the accessibility floor (reduced-motion setting+persistence+taming, SLAY/audio no-single-channel, ≥48dp + WCAG contrast + muted-never-for-safety firewall, TalkBack role+state labels + announce strings), 670/670 EditMode green (+48). epic-6 stays in-progress until the retrospective (epics not auto-closed).
@@ -113,3 +114,20 @@ development_status:
   epic-7: in-progress
   7-1-reserve-the-pit-seam-without-building-it: done
   epic-7-retrospective: optional
+
+  # Epic 8: Render, Scene & Device-Build Pass (on-device vertical slice) — sequenced BEFORE Epic 7 in priority
+  # Scoped 2026-06-16 (Epic-6 retro Action Item #2). The on-device vertical slice owning every deferred
+  # render/scene/device entry + AR-21's five Play-submission blockers. VERIFIABILITY SPLIT (James's decision):
+  # 8.1/8.2 carry substantial headless-verifiable content (build config + scene list + Bootstrap.unity YAML
+  # as text, registration closure + acyclic guards) → automatable by the story-automator. 8.3-8.7 are
+  # overwhelmingly device-only (real AR, render, .aab, on-device smoke) → their "headless parts" are mostly
+  # carried-forward already-green regression pins; they are device-checklist stories, NOT auto-claimed done.
+  epic-8: in-progress
+  8-1-own-ar-21-play-submission-blockers-and-build-config-as-data: done
+  8-2-author-the-game-scenes-build-order-and-close-the-bootstrap-registration-seams: backlog
+  8-3-author-the-ar-rig-scene-contents-and-its-device-glue: backlog
+  8-4-wire-thin-views-presenters-navigation-and-the-ar-backgrounding-pump: backlog
+  8-5-paint-the-chunky-render-layer-and-billing-device-glue: backlog
+  8-6-land-the-accessibility-render-floor: backlog
+  8-7-assemble-the-aab-and-run-the-on-device-release-gate: backlog
+  epic-8-retrospective: optional
