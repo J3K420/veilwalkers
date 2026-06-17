@@ -67,6 +67,34 @@ namespace Veilwalkers.UI
         public readonly bool ReducedMotion;
 
         /// <summary>
+        /// Whether this entrance carries screen-shake (Story 6.6, AC-1; UX-DR17). TRUE only for the
+        /// dramatic high-tier entrances normally (the Epic Tear + the Nightmare Breach — a WIDER default
+        /// tier set than <see cref="BrandedGlitch"/>, which is Nightmare-only), and FALSE for EVERY tier
+        /// when <see cref="ReducedMotion"/> is on. It mirrors <see cref="BrandedGlitch"/>'s
+        /// reduced-motion TAMING (both go FALSE under reduced-motion) — NOT its default tier set. No
+        /// shake under reduced-motion, so the dread reads without motion. The render reads this to decide
+        /// whether to shake; a tamed plan never shakes.
+        /// </summary>
+        public readonly bool ScreenShake;
+
+        /// <summary>
+        /// Whether this materialization plays an audio sting (Story 6.6, AC-2; UX-DR17 — audio is
+        /// never the sole carrier of dread). The dramatic high-tier entrance (the T5 Breach roar)
+        /// stings. A constant-by-construction derivation, so even a <c>default</c> plan is consistent.
+        /// </summary>
+        public bool HasAudioSting => Variant == MaterializationVariant.Breach;
+
+        /// <summary>
+        /// Whether a visual / caption cue is REQUIRED for this materialization (Story 6.6, AC-2). This
+        /// is ALWAYS true whenever <see cref="HasAudioSting"/> is true — the structural "audio is never
+        /// the sole carrier of dread" guarantee: an audio sting can NEVER exist without its paired
+        /// visual/caption cue (a non-auditory player still perceives the dread). A computed property, so
+        /// a sting-with-no-cue is unreachable by construction (the SLAY-red-never-alone shape). The
+        /// actual caption + audio RENDER is the deferred Epic-6 view concern; this is the DECISION.
+        /// </summary>
+        public bool RequiresCaptionCue => HasAudioSting;
+
+        /// <summary>
         /// Always <c>true</c> (UX-DR12): the action bar is HIDDEN during materialization and pops
         /// in only when the Monster settles. A constant PROPERTY (not a ctor-set field) so the
         /// invariant holds even for <c>default(MaterializationPlan)</c> — a view reading the gate
@@ -99,6 +127,7 @@ namespace Veilwalkers.UI
             float durationSeconds,
             bool brandedGlitch,
             bool reducedMotion,
+            bool screenShake,
             MaterializationAmbiance ambiance)
         {
             Tier = tier;
@@ -107,6 +136,7 @@ namespace Veilwalkers.UI
             DurationSeconds = durationSeconds;
             BrandedGlitch = brandedGlitch;
             ReducedMotion = reducedMotion;
+            ScreenShake = screenShake;
             Ambiance = ambiance;
         }
 
@@ -124,10 +154,11 @@ namespace Veilwalkers.UI
             float durationSeconds,
             bool brandedGlitch,
             bool reducedMotion,
+            bool screenShake,
             MaterializationAmbiance ambiance)
         {
             return new MaterializationPlan(
-                tier, monsterId, variant, durationSeconds, brandedGlitch, reducedMotion, ambiance);
+                tier, monsterId, variant, durationSeconds, brandedGlitch, reducedMotion, screenShake, ambiance);
         }
     }
 }

@@ -278,5 +278,122 @@ namespace Veilwalkers.UI.Tests
             Assert.That(def.HideActionBarDuringMaterialization, Is.True);
             Assert.That(def.InputRecoveryBlocked, Is.False);
         }
+
+        // ============================================================================================
+        // Story 6.6 — the accessibility-floor additions to the materialization decision (AC-1, AC-2).
+        // ============================================================================================
+
+        // ---- AC-1 (6.6): screen-shake accompanies the dramatic tiers, tamed OFF under reduced-motion ----
+
+        [Test]
+        public void Screen_shake_is_on_for_the_dramatic_high_tiers_with_motion_on()
+        {
+            var p = Presenter();
+            // The dramatic entrances (Epic Tear + Nightmare Breach) shake; the calmer low tiers do not.
+            Assert.That(p.PlanFor(Rarity.Epic, false).ScreenShake, Is.True, "Epic Tear shakes");
+            Assert.That(p.PlanFor(Rarity.Nightmare, false).ScreenShake, Is.True, "Nightmare Breach shakes");
+            Assert.That(p.PlanFor(Rarity.Common, false).ScreenShake, Is.False, "Common does not shake");
+            Assert.That(p.PlanFor(Rarity.Uncommon, false).ScreenShake, Is.False, "Uncommon does not shake");
+            Assert.That(p.PlanFor(Rarity.Rare, false).ScreenShake, Is.False, "Rare does not shake");
+        }
+
+        [Test]
+        public void Reduced_motion_disables_screen_shake_on_every_tier()
+        {
+            var p = Presenter();
+            foreach (var tier in AscendingTiers)
+            {
+                Assert.That(p.PlanFor(tier, true).ScreenShake, Is.False,
+                    $"{tier} tamed plan must carry no screen-shake (no flashing/jolt, UX-DR17/AC-1)");
+            }
+        }
+
+        // ---- AC-1 (6.6): reduced-motion lowers the ambiance amplitude but PRESERVES the per-tier order ----
+
+        [Test]
+        public void Reduced_motion_tames_the_ambiance_amplitude_a_step_down()
+        {
+            var p = Presenter();
+            // The raw Intensity is preserved (the tier reading survives); the EFFECTIVE intensity drops
+            // a step toward calm, floored at Calm.
+            var tamedNightmare = p.PlanFor(Rarity.Nightmare, true).Ambiance;
+            Assert.That(tamedNightmare.Intensity, Is.EqualTo(AmbianceIntensity.Nightmarish), "raw tier preserved");
+            Assert.That(tamedNightmare.Tamed, Is.True);
+            Assert.That(tamedNightmare.EffectiveIntensity, Is.EqualTo(AmbianceIntensity.Dreadful),
+                "tamed amplitude is one step calmer");
+
+            // A Common (already calm) cannot drop below Calm.
+            var tamedCommon = p.PlanFor(Rarity.Common, true).Ambiance;
+            Assert.That(tamedCommon.EffectiveIntensity, Is.EqualTo(AmbianceIntensity.Calm), "floored at Calm");
+
+            // Motion-on never tames.
+            Assert.That(p.PlanFor(Rarity.Nightmare, false).Ambiance.Tamed, Is.False);
+            Assert.That(p.PlanFor(Rarity.Nightmare, false).Ambiance.EffectiveIntensity,
+                Is.EqualTo(AmbianceIntensity.Nightmarish), "untamed plays full amplitude");
+        }
+
+        [Test]
+        public void Tamed_ambiance_preserves_the_per_tier_dread_ordering_so_dread_still_reads()
+        {
+            // The load-bearing AC-1 invariant: taming lowers amplitude but the dread STILL reads —
+            // a tamed Nightmare is strictly more-dread than a tamed Common (the ordering survives,
+            // not just "taming happened"). Pin the full ascending chain is non-decreasing AND the
+            // endpoints are strictly ordered.
+            var p = Presenter();
+            for (int i = 0; i < AscendingTiers.Length - 1; i++)
+            {
+                var lower = p.PlanFor(AscendingTiers[i], true).Ambiance.EffectiveIntensity;
+                var higher = p.PlanFor(AscendingTiers[i + 1], true).Ambiance.EffectiveIntensity;
+                Assert.That((int)higher, Is.GreaterThanOrEqualTo((int)lower),
+                    $"tamed {AscendingTiers[i + 1]} must read >= tamed {AscendingTiers[i]}");
+            }
+            var tamedCommon = p.PlanFor(Rarity.Common, true).Ambiance.EffectiveIntensity;
+            var tamedNightmare = p.PlanFor(Rarity.Nightmare, true).Ambiance.EffectiveIntensity;
+            Assert.That((int)tamedNightmare, Is.GreaterThan((int)tamedCommon),
+                "a tamed Nightmare still reads strictly more-dread than a tamed Common — the dread reads");
+        }
+
+        // ---- AC-2 (6.6): audio sting is NEVER the sole carrier of dread — always a paired caption cue ----
+
+        [Test]
+        public void Every_plan_with_an_audio_sting_requires_a_caption_cue()
+        {
+            var p = Presenter();
+            foreach (var tier in AscendingTiers)
+            {
+                foreach (var reduced in new[] { false, true })
+                {
+                    var plan = p.PlanFor(tier, reduced);
+                    if (plan.HasAudioSting)
+                    {
+                        Assert.That(plan.RequiresCaptionCue, Is.True,
+                            $"{tier} (reduced={reduced}) has an audio sting → MUST require a caption cue (never audio-only)");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void The_breach_stings_and_carries_its_caption_cue_lower_tiers_do_not()
+        {
+            var p = Presenter();
+            var breach = p.PlanFor(Rarity.Nightmare, false);
+            Assert.That(breach.HasAudioSting, Is.True, "the T5 Breach roar stings");
+            Assert.That(breach.RequiresCaptionCue, Is.True, "and therefore requires a caption cue");
+
+            // A calm Common entrance has no sting → no required cue (the pairing only triggers on a sting).
+            var common = p.PlanFor(Rarity.Common, false);
+            Assert.That(common.HasAudioSting, Is.False, "Common Pop-in does not sting");
+        }
+
+        [Test]
+        public void Caption_cue_pairing_holds_even_for_a_default_plan()
+        {
+            // The pairing is a computed property, so even a default plan is consistent (no sting →
+            // no required cue; never a sting-without-cue).
+            MaterializationPlan def = default;
+            Assert.That(def.RequiresCaptionCue, Is.EqualTo(def.HasAudioSting),
+                "RequiresCaptionCue tracks HasAudioSting by construction — a sting-without-cue is unreachable");
+        }
     }
 }

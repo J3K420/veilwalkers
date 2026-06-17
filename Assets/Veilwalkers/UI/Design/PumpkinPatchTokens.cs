@@ -88,6 +88,18 @@ namespace Veilwalkers.UI
         /// </summary>
         public static readonly IReadOnlyList<int> Spacing = System.Array.AsReadOnly(_spacing);
 
+        // ---- Accessibility floor (UX-DR17) — dp ----
+
+        /// <summary>
+        /// The minimum interactive-element tap-target size (dp), per UX-DR17's accessibility floor
+        /// (Story 6.6) and the Android Material guidance. Every interactive chunky control (button,
+        /// credit pill, Codex slot, pack card) must render at least <see cref="MinTapTargetDp"/> ×
+        /// <see cref="MinTapTargetDp"/> so it is comfortably tappable. A frame-level dp token like the
+        /// spacing scale — the render enforces the min-size; the descriptors declare conformance. It is
+        /// ≥ the largest spacing step (<see cref="Space32"/>), a sanity-checkable ordering.
+        /// </summary>
+        public const int MinTapTargetDp = 48;
+
         // ---- Corner radii (UX-DR1) — dp ----
 
         /// <summary>Small radius — sm badges/chips.</summary>

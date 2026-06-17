@@ -79,6 +79,19 @@ namespace Veilwalkers.Persistence
         public int GuaranteedRareLures { get; set; }
 
         /// <summary>
+        /// Reduced-motion / photosensitivity accessibility opt-in (Story 6.6; UX-DR17). When true the
+        /// materialization entrances are tamed — no T5 Breach glitch, no screen-shake, the per-tier
+        /// ambiance intensity is lowered — while the entrance + the felt dread are preserved (the 4.7
+        /// <c>MaterializationPresenter</c> consumes this as its <c>reducedMotion</c> input). Defaults to
+        /// <c>false</c> (motion-ON): an existing save that lacks the JSON property deserializes to false,
+        /// so a player who never opted in is NEVER silently forced into reduced-motion — the safe default.
+        /// A purely additive scalar (the <see cref="GuaranteedRareLures"/> / <see cref="StartingCreditsGranted"/>
+        /// precedent): NO schema-version bump and NO migration are needed (an absent property → false).
+        /// Not a collection; <see cref="CoerceNullCollections"/> does not touch it.
+        /// </summary>
+        public bool ReducedMotion { get; set; }
+
+        /// <summary>
         /// The interrupted-encounter snapshot, or null when no encounter is active.
         /// This is the Persistence-owned data-only shape; the behavior-bearing
         /// <c>EncounterSnapshot</c> (Encounter tier, Epic 4) maps to/from it.

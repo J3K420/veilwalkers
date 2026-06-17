@@ -66,6 +66,20 @@ namespace Veilwalkers.UI
             // Nightmarish ambiance, the dread still reads.
             bool brandedGlitch = !reducedMotion && tier == Rarity.Nightmare;
 
+            // Screen-shake (UX-DR17 / Story 6.6, AC-1) accompanies the dramatic high-tier entrances
+            // (Epic Tear + Nightmare Breach) — and is tamed OFF for EVERY tier under reduced motion,
+            // the exact mirror of the glitch taming above. No shake under reduced-motion (no flashing/
+            // jolt), but the entrance + ambiance survive so the dread still reads.
+            bool screenShake = !reducedMotion && ShakesByDefault(tier);
+
+            // Reduced-motion also lowers the ambiance amplitude a step (AC-1) while PRESERVING the
+            // per-tier ordering — a tamed Nightmare still reads strictly more-dread than a tamed Common
+            // (the dread reads without strobe/shake). The raw tier intensity is unchanged.
+            if (reducedMotion)
+            {
+                ambiance = ambiance.AsTamed();
+            }
+
             return MaterializationPlan.Create(
                 tier,
                 monsterId,
@@ -73,8 +87,15 @@ namespace Veilwalkers.UI
                 duration,
                 brandedGlitch,
                 reducedMotion,
+                screenShake,
                 ambiance);
         }
+
+        // Which tiers carry screen-shake by default (motion on): the dramatic high-tier entrances —
+        // the Epic Tear + the Nightmare Breach. The lower tiers settle without a shake. (Reduced
+        // motion tames it off for every tier regardless.)
+        private static bool ShakesByDefault(Rarity tier) =>
+            tier == Rarity.Epic || tier == Rarity.Nightmare;
 
         /// <summary>
         /// The action-bar gate (UX-DR12): the bar is hidden during materialization and pops in

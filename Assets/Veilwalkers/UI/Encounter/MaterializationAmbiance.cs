@@ -35,10 +35,22 @@ namespace Veilwalkers.UI
     /// <c>readonly struct</c> the (Epic-6) view consumes to tint/light/vignette the AR scene
     /// toward the active tier. Carries NO Unity <c>Color</c>/<c>Light</c> — those are Epic-6
     /// tokens resolved from <see cref="Intensity"/> at render time.
+    /// <para>
+    /// <b>Reduced-motion taming (Story 6.6, AC-1).</b> When <see cref="Tamed"/> is true the
+    /// <see cref="EffectiveIntensity"/> is clamped one step toward calm (floored at
+    /// <see cref="AmbianceIntensity.Calm"/>) so the per-tier ambiance plays at lower amplitude — but
+    /// the <em>per-tier ordering is preserved</em> (a tamed Nightmare's effective intensity is still
+    /// strictly higher than a tamed Common's), so the dread STILL reads (the 4.7 AC-3 invariant). The
+    /// raw <see cref="Intensity"/> is unchanged (the variant + the "toward the tier" reading survive);
+    /// only the rendered amplitude drops. Taming lowers MOTION/amplitude, it does NOT flatten the
+    /// scale to a single step.
+    /// </para>
     /// </summary>
     public readonly struct MaterializationAmbiance
     {
-        /// <summary>The discrete dread-scale step for this tier (NOT a literal rarity bar — AC-1).</summary>
+        /// <summary>The discrete dread-scale step for this tier (NOT a literal rarity bar — AC-1).
+        /// This is the RAW per-tier step; reduced-motion taming lowers <see cref="EffectiveIntensity"/>,
+        /// never this.</summary>
         public readonly AmbianceIntensity Intensity;
 
         /// <summary>
@@ -47,10 +59,39 @@ namespace Veilwalkers.UI
         /// </summary>
         public readonly bool SlayGlow;
 
+        /// <summary>
+        /// Whether this ambiance is reduced-motion tamed (Story 6.6, AC-1): the rendered amplitude
+        /// (<see cref="EffectiveIntensity"/>) is lowered while the per-tier ordering is preserved.
+        /// </summary>
+        public readonly bool Tamed;
+
         public MaterializationAmbiance(AmbianceIntensity intensity, bool slayGlow)
+            : this(intensity, slayGlow, false)
+        {
+        }
+
+        public MaterializationAmbiance(AmbianceIntensity intensity, bool slayGlow, bool tamed)
         {
             Intensity = intensity;
             SlayGlow = slayGlow;
+            Tamed = tamed;
         }
+
+        /// <summary>
+        /// The intensity the render should play at. When <see cref="Tamed"/>, the raw
+        /// <see cref="Intensity"/> is clamped ONE discrete step toward <see cref="AmbianceIntensity.Calm"/>
+        /// (floored at Calm) — lower amplitude, no strobe/shake — while the ascending per-tier ordering is
+        /// preserved (a step-down applied uniformly keeps higher tiers higher). Untamed, it is the raw
+        /// intensity. This is the structural "dread still reads when tamed" guarantee (AC-1 / 4.7 AC-3).
+        /// </summary>
+        public AmbianceIntensity EffectiveIntensity =>
+            Tamed && Intensity > AmbianceIntensity.Calm ? Intensity - 1 : Intensity;
+
+        /// <summary>
+        /// Build the reduced-motion tamed twin of this ambiance — same raw <see cref="Intensity"/> +
+        /// <see cref="SlayGlow"/>, but <see cref="Tamed"/> true so the effective amplitude drops a step.
+        /// </summary>
+        public MaterializationAmbiance AsTamed() =>
+            new MaterializationAmbiance(Intensity, SlayGlow, true);
     }
 }
