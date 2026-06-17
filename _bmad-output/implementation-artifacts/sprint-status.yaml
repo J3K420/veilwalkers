@@ -36,6 +36,7 @@
 
 generated: 2026-06-10
 last_updated: 2026-06-16
+# epic-7 in-progress — 7.1 (Reserve the Pit seam) DONE 2026-06-16, the FIRST + ONLY Epic-7 story. Architecture-only, post-MVP, ZERO gameplay: a Pit-folder README (carried FR-15/16/17 specs + ArSessionService/EncounterService reuse note, cited) + a non-vacuous regression guard (no .asmdef / no gameplay .cs under Assets/Veilwalkers/Pit/), mutation-tested. 674/674 EditMode green (+4). CR: 13 raw → 5 confirmed (3 patches) + 5 defer (all pre-existing AcyclicDependencyTests robustness) + 2 sanctioned + 1 FP, 0 AC violations. Independent of the Epic-8 render defer (run ahead of Epic 8 at James's direction). Epic 7 stays in-progress until the retrospective (epics not auto-closed; retro is optional for Epic 7).
 # epic-6 RETROSPECTIVE DONE 2026-06-16 (epic-6-retro-2026-06-16.md) — verdict: dev-discipline lessons (struct-invariant, test-quality, failure-path parity) landed + compounded; the deferred render/scene/AR-rig/device-build layer is the standing un-retired debt (6/6 stories deferred it; ownerless across deferred-work.md). SIGNIFICANT DISCOVERY: nothing in Epics 2-6 is renderable/installable on a device. DECISION (James): create a NEW "Epic 8: Render, Scene & Device-Build Pass" owning all deferred render entries + AR-rig scene + device build + AR-21, sequenced BEFORE the post-MVP Epic 7 Pit seam. 6 action items recorded (AI#1 InternalsVisibleTo on UI; AI#2 scope Epic 8; AI#4 decide AR-21 fate). Epic 7 (7.1) confirmed ready as a half-day no-asmdef stub, independent of the render defer.
 # epic-6 ALL 6 STORIES DONE (6.1-6.6) 2026-06-16 — 6.6 = the accessibility floor (reduced-motion setting+persistence+taming, SLAY/audio no-single-channel, ≥48dp + WCAG contrast + muted-never-for-safety firewall, TalkBack role+state labels + announce strings), 670/670 EditMode green (+48). epic-6 stays in-progress until the retrospective (epics not auto-closed).
 # epic-6 in-progress — 6.1 + 6.2 + 6.3 + 6.4 + 6.5 done (2026-06-16); 6.5 = diegetic voice (VeilVoice copy home — 5 canonical system-moment lines + the plain-safety firewall) + on-brand state treatments (StateTreatmentPresenter mapping the existing AR-session/placement/anchor-restore/camera/codex/safety-gate state enums to StateTreatment decisions, no-percentage invariant structural), logic-only; re-pointed the 2 deferred placeholders (Codex locked-slot, Home reward label) at VeilVoice + landed the plain safety copy (622/622 EditMode green, +33). 6.6 (accessibility floor) backlog — the LAST Epic-6 story.
@@ -109,6 +110,6 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: Post-MVP Seam — The Pit (architecture only, NOT built)
-  epic-7: backlog
-  7-1-reserve-the-pit-seam-without-building-it: backlog
+  epic-7: in-progress
+  7-1-reserve-the-pit-seam-without-building-it: done
   epic-7-retrospective: optional
