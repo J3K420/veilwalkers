@@ -14,6 +14,7 @@
 - **Android target-SDK floor: API 35** (Play floor *as of 2026-06* — Google raises it ~yearly, **re-check before each submission**). Single source of truth = `MinPlayTargetSdk` in `BuildConfigGuardTests.cs`; the build guide cites it. Min SDK stays **24** (ARCore floor).
 - **Build the `.aab`:** menu *Veilwalkers → Build Android App Bundle (.aab)*, or headless `-executeMethod Veilwalkers.EditorTools.VeilwalkersBuilder.BuildAndroidAppBundle`. Signing material comes from `VEILWALKERS_KEYSTORE_*` env vars, never a committed file.
 - **EDM4U:** Gradle templates + resolved `Assets/Plugins/Android/*.aar` are gitignored; run *Assets → External Dependency Manager → Android Resolver → Force Resolve* after a fresh clone.
+- **Epic 8 device/Editor work: [`docs/epic-8-device-release-gate.md`](docs/epic-8-device-release-gate.md).** The MVP is logic-complete + headless-green but NOT yet renderable/installable — Epic 8 stories 8.3–8.7 (AR rig + render + signed `.aab` + on-device smoke) and the Editor remainders of 8.1/8.2 (scenes, `MonsterDatabase.asset`, Bootstrap seam closure) need the Editor + a real ARCore device. That checklist is the ordered, owned gate to a Play-submittable build.
 
 ## What this is
 

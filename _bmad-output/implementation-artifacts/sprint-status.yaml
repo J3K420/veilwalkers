@@ -126,6 +126,13 @@ development_status:
   epic-8: in-progress
   8-1-own-ar-21-play-submission-blockers-and-build-config-as-data: done
   8-2-author-the-game-scenes-build-order-and-close-the-bootstrap-registration-seams: done
+  # 8.3-8.7 are DEVICE-CHECKLIST stories — they need the Unity Editor + a real ARCore device + a GPU
+  # (author the AR rig + #if UNITY_ANDROID device glue, paint the chunky render layer, the a11y render
+  # floor, the signed .aab + on-device AR smoke + NFR-1/NFR-5 budgets). They CANNOT be auto-implemented
+  # or auto-verified in a headless automator session, so they stay `backlog` here and are tracked as an
+  # owned, ordered, executable gate in docs/epic-8-device-release-gate.md. Their headless CONTRACTS are
+  # already satisfied (8.1 build config; 8.2 build settings; the green presenter/plan/token decision
+  # floor from Epics 2-6). Work them in the Editor/on hardware via that checklist.
   8-3-author-the-ar-rig-scene-contents-and-its-device-glue: backlog
   8-4-wire-thin-views-presenters-navigation-and-the-ar-backgrounding-pump: backlog
   8-5-paint-the-chunky-render-layer-and-billing-device-glue: backlog
