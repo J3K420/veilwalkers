@@ -152,6 +152,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _economyConfig: {fileID: 11400000, guid: b02bccce98eae3042ac3f1552e01e8b8, type: 2}
+  _monsterDatabase: {fileID: 11400000, guid: 5d2facb7baeb9414693f1485c1fde949, type: 2}
 --- !u!4 &705507995
 Transform:
   m_ObjectHideFlags: 0

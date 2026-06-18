@@ -128,13 +128,6 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         [Test]
-        [Ignore("Editor checklist (Epic 8 Gate 0): the seam-closure added " +
-                "[SerializeField] MonsterDatabase _monsterDatabase to Bootstrap, null-checked in " +
-                "WireServices (a fatal boot misconfiguration when unassigned — the _economyConfig " +
-                "precedent). Assign MonsterDatabase.asset to the Bootstrap component in " +
-                "Bootstrap.unity (an inspector drag — unsafe to hand-author as scene YAML). The " +
-                "on-disk Bootstrap MonoBehaviour has NO _monsterDatabase ref yet. Un-ignore this " +
-                "pin once assigned.")]
         public void Bootstrap_scene_assigns_the_MonsterDatabase_reference()
         {
             AssertBootstrapAssignsSerializedAsset(

@@ -21,13 +21,15 @@ Status legend: ☐ not started · ◐ in progress · ☑ done (verified on devic
 - ☑ Registered the six-slot build order in `EditorBuildSettings.asset`: `Bootstrap(0) → Onboarding(1) → Home(2) → ARHunt(3) → Codex(4) → Shop(5)`, each enabled. `BuildSettingsGuardTests.Every_enabled_scene_resolves_to_a_real_unity_asset` passes with 6 real scenes.
 - **Blocks:** 8.4 (views live in scenes), 8.7 (smoke).
 
-### 0.3 Assign `_economyConfig` + close the Bootstrap registration seams  (Story 8.2) — ◐ IN PROGRESS
-- ☑ In `Bootstrap.unity`, assigned the `EconomyConfig` asset on the Bootstrap component (inspector drag). **Un-ignored** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_EconomyConfig_reference` — now active + passing.
+### 0.3 Assign `_economyConfig` + close the Bootstrap registration seams  (Story 8.2) — ☑ DONE headlessly (2026-06-17); one device check remains
+- ☑ In `Bootstrap.unity`, assigned the `EconomyConfig` asset on the Bootstrap component (inspector drag). **Un-ignored** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_EconomyConfig_reference` — active + passing.
 - ☑ In `Bootstrap.cs`, closed the seams: construct + register `CodexService(saveService, _monsterDatabase, clock)`; construct + register `LureSystem/CaptureSystem/SlaySystem/EncounterService` (passing the SHARED `economyMutationLock`); wired `EncounterService` as the 2nd shortfall source + the real `IEncounterSnapshotPort` via two thin App-tier binders in `EncounterServiceAppAdapters.cs` (the `ShortfallAdapter` + `SnapshotPortAdapter` — `EncounterService` sits below App so cannot implement App-tier interfaces directly, AR-5; replaces the `NoEncounter`/null no-ops). Added `[SerializeField] MonsterDatabase _monsterDatabase` (null-checked in `WireServices`, the `_economyConfig` precedent).
-- ☑ `AcyclicDependencyTests` stays green (headless guard of the registration code); full EditMode gate 689 passed / 0 failed / 1 ignored, 0 `error CS`.
-- ☐ **REMAINING (Editor drag):** In `Bootstrap.unity`, assign `MonsterDatabase.asset` to the new `_monsterDatabase` slot on the Bootstrap component. **Un-ignore** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_MonsterDatabase_reference` once assigned. *(Latent boot-failure until done — `WireServices` now requires it, exactly like `_economyConfig`.)*
-- ☐ On device/PlayMode: confirm `GameServices` resolves `CodexService` + `EncounterService` post-boot.
+- ☑ In `Bootstrap.unity`, assigned `MonsterDatabase.asset` to the `_monsterDatabase` slot. **Un-ignored** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_MonsterDatabase_reference` — active + passing.
+- ☑ `AcyclicDependencyTests` stays green (headless guard of the registration code); full EditMode gate **690 passed / 0 failed / 0 ignored, 0 `error CS`.**
+- ☐ On device/PlayMode (Gate 5): confirm `GameServices` resolves `CodexService` + `EncounterService` post-boot. *(The one part not headless-provable.)*
 - **Blocked by:** 0.1. **Settles:** the 4.1–4.6 + 2.3 "no live EncounterService/CodexService registration" deferrals (the registration CODE; runtime resolution is the device claim).
+
+> **Gate 0 is COMPLETE** (all headless-provable work). Next frontier: Gate 1 (AR rig + `#if UNITY_ANDROID` device bodies, Story 8.3 — device-bound).
 
 ---
 
