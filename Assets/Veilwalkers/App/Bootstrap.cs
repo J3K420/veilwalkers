@@ -4,6 +4,8 @@ using Veilwalkers.AR;
 using Veilwalkers.Billing;
 using Veilwalkers.Core;
 using Veilwalkers.Economy;
+using Veilwalkers.Encounter;
+using Veilwalkers.Monsters;
 using Veilwalkers.Persistence;
 
 namespace Veilwalkers.App
@@ -44,6 +46,16 @@ namespace Veilwalkers.App
         /// boot if it is unassigned (see <see cref="WireServices"/>).
         /// </summary>
         [SerializeField] private EconomyConfig _economyConfig;
+
+        /// <summary>
+        /// The populated Monster registry (Story 2.2 / AR-3). Assigned on the Bootstrap
+        /// component in the scene-0 entry scene alongside <see cref="_economyConfig"/>; it
+        /// is the catalog <see cref="Veilwalkers.Monsters.Codex.CodexService"/> reads and
+        /// <c>LureSystem</c> rolls rarity over. Required — wiring fails fast at boot if it is
+        /// unassigned (see <see cref="WireServices"/>), the same all-or-nothing posture as
+        /// <see cref="_economyConfig"/>.
+        /// </summary>
+        [SerializeField] private MonsterDatabase _monsterDatabase;
 
         private void Awake()
         {
@@ -117,6 +129,16 @@ namespace Veilwalkers.App
                 {
                     throw new System.InvalidOperationException(
                         "Bootstrap: EconomyConfig is not assigned. Assign the EconomyConfig " +
+                        "asset to the Bootstrap component in the scene-0 entry scene.");
+                }
+
+                // The Monster registry is required for the same reason (Story 2.2 seam
+                // closure): CodexService + LureSystem both take it non-null, so an unassigned
+                // MonsterDatabase is a fatal boot misconfiguration, never a silent fallback.
+                if (_monsterDatabase == null)
+                {
+                    throw new System.InvalidOperationException(
+                        "Bootstrap: MonsterDatabase is not assigned. Assign the MonsterDatabase " +
                         "asset to the Bootstrap component in the scene-0 entry scene.");
                 }
 
@@ -285,86 +307,61 @@ namespace Veilwalkers.App
                 var billingService = new BillingService(
                     creditPackCatalog, storeAdapter, creditService, purchaseReconciler);
 
-                // AppStateMachine (Story 6.3, this App tier — architecture.md:462-464) — the surface-flow
-                // state machine + the AC-2 insufficient-credits → Shop arbiter. It is NOT a Core service;
-                // it lives here, the "only thing that arbitrates UI ↔ service control flow." Its ctor
-                // SUBSCRIBES to creditService.OnInsufficientCredits (the AC-2 source); the state machine —
-                // not the service — decides Shop navigation (keeping Billing → Economy one-way). The
-                // encounter Shop-round-trip snapshot port + the SECOND shortfall source (EncounterService's
-                // OnInsufficientCredits) are wired ONLY when EncounterService is registered; it is STILL the
-                // deferred Bootstrap seam (its MonsterDatabase.asset is unauthored — see the CodexService/
-                // EncounterService seam comments above), so the state machine is constructed with the
-                // graceful IEncounterSnapshotPort.NoEncounter no-op + a null second source (the
-                // CodexService-consumer-degrade precedent). To close the seam once EncounterService lands:
-                // build a thin adapter exposing { HasActiveEncounter => State == EncounterState.Lured,
-                // SnapshotActiveEncounter, RehydrateFromSnapshot } onto IEncounterSnapshotPort and pass
-                // encounterService (as IInsufficientCreditsSource) as the third ctor arg. The CONSUMERS —
-                // HomePresenter / ArHudPresenter (Veilwalkers.UI) + their thin Views — resolve this via
-                // GameServices.Get and route their CTA/pill taps through it; placing those Views in scenes
-                // is the deferred Epic-6 view layer (Story 6.4/6.5). The state machine's flow + arbitration
-                // logic is fully proven headless by App.Tests. NOTE: AppStateMachine implements IDisposable
-                // (it must unsubscribe symmetrically — architecture.md:514-515); Bootstrap has no teardown
-                // in a player build (wire-once), but the Dispose exists for tests + future scene unload.
-                var appStateMachine = new AppStateMachine(creditService, IEncounterSnapshotPort.NoEncounter);
-
-                // CodexService (Story 2.3, Veilwalkers.Monsters) — registration SEAM, not
-                // wired this story. It is the read model + atomic discovery-record seam over
-                // SaveModel.Codex; it owns a PRIVATE SemaphoreSlim, so it takes NO lock arg
-                // (it must NOT inject the Economy SaveMutationLock — that would be an illegal
-                // Monsters → Economy edge). Wiring is deferred because its second collaborator,
-                // a MonsterDatabase instance, has no authored .asset yet (the Story 2.2 [~]
-                // deferral): adding a null [SerializeField] MonsterDatabase and constructing
-                // here would throw ArgumentNullException inside this try and be fatal at boot.
-                // To close the seam once MonsterDatabase.asset exists: add
-                // `using Veilwalkers.Monsters;` + `[SerializeField] private MonsterDatabase
-                // _monsterDatabase;` (null-checked like _economyConfig), then
-                // `new CodexService(saveService, _monsterDatabase, clock)` (the IClock — already
-                // in scope, registered below at GameServices.Register<IClock> — was added in
-                // Story 2.5 to stamp the first-discovered date on the Codex entry) and
-                // `GameServices.Register<CodexService>(...)`. CodexService's logic is fully
-                // covered by Monsters.Tests, so leaving it unregistered blocks nothing.
-                // Story 2.4 added the first CONSUMER: CodexGridView (Veilwalkers.UI) resolves
-                // CodexService via GameServices.Get and degrades gracefully (inert grid) while
-                // it stays unregistered — so the view exists-but-inert until this seam closes.
-                // Story 2.5 added a SECOND consumer: CodexDetailView (Veilwalkers.UI), which
-                // degrades identically (an inert Open(id) no-ops + warns) until the seam closes.
-                // The grid's reveal LOGIC and the detail panel's content/reveal LOGIC are both
-                // fully proven headless by Veilwalkers.UI.Tests (CodexGridPresenter +
-                // CodexDetailPresenter over a real CodexService), independent of this wiring.
-
                 // IRandom (Story 4.2, Veilwalkers.Core) — the randomness seam for the Lure rarity roll. A
                 // time-seeded SystemRandom in production; tests script a fake. Constructed + registered LIVE
-                // (it has NO blocker — pure System.Random). LureSystem below consumes the same instance once
-                // its MonsterDatabase dep is available.
+                // (it has NO blocker — pure System.Random). LureSystem below consumes the same instance.
                 var random = new SystemRandom();
 
-                // EncounterService + LureSystem (Stories 4.1/4.2, Veilwalkers.Encounter) — registration SEAM,
-                // not wired this story (decision J1). EncounterService is the encounter spine: it drives the
-                // EncounterStateMachine, owns the AC-2 atomic multi-delta write (charge/credit AND codex in ONE
-                // SaveAsync under the SHARED economyMutationLock), wires OnArSessionInterrupted → Suspended →
-                // recovery TryRestore (AC-3), and (Story 4.2) exposes TryLureAsync composing LureSystem +
-                // planeAnchorService + monsterSpawner. Both are deferred for the SAME reason as CodexService
-                // above: they need a MonsterDatabase whose .asset is unauthored (the Story 2.2 [~] deferral) —
-                // LureSystem needs it for the rarity roll, EncounterService needs the CodexService built over
-                // it. To close the seam once MonsterDatabase.asset + CodexService land:
-                // `var lureSystem = new LureSystem(_economyConfig, monsterDatabase, random);`
-                // `var captureSystem = new CaptureSystem(random);` (Story 4.4 — the Capture success roll; reuses
-                //   the SAME IRandom instance as LureSystem) then
-                // `var slaySystem = new SlaySystem(_economyConfig, random);` (Story 4.5 — the Slay success roll +
-                //   cost accessor; reuses the SAME IRandom instance and the SAME EconomyConfig) then
-                // `var encounterService = new EncounterService(saveService, creditService, progressionService,
-                //   codexService, economyMutationLock, anchorRestoreService, arSessionService,
-                //   lureSystem, planeAnchorService, monsterSpawner, captureSystem, slaySystem);` then
-                // `GameServices.Register<EncounterService>(encounterService);`. CRITICAL: pass the SAME
-                // economyMutationLock constructed above (shared with CreditService/ProgressionService) — the
-                // composed Encounter write MUST serialize against plain Economy writes (that is the whole point
-                // of the shared lock; a private lock would let a composed action interleave with a credit
-                // spend and durably persist each other's uncommitted delta). planeAnchorService + monsterSpawner
-                // are already constructed live above; only the MonsterDatabase-dependent deps remain blocked.
-                // The logic is fully proven headless by Veilwalkers.Encounter.Tests over real Economy services,
-                // a real CodexService + LureSystem (in-memory MonsterDatabase), and real PlaneAnchorService/
-                // MonsterSpawner — independent of this wiring, so leaving it unregistered blocks nothing. The
-                // FR-7–10 per-action public methods + their UI callers are Stories 4.3–4.6 / Epic 6.
+                // CodexService (Story 2.3, Veilwalkers.Monsters) — SEAM NOW CLOSED (Epic 8 Gate 0). It is the
+                // read model + atomic discovery-record seam over SaveModel.Codex; it owns a PRIVATE
+                // SemaphoreSlim, so it takes NO lock arg (it must NOT inject the Economy SaveMutationLock — that
+                // would be an illegal Monsters → Economy edge). It was deferred only because its second
+                // collaborator, a MonsterDatabase instance, had no authored .asset; now that
+                // MonsterDatabase.asset exists (assigned to _monsterDatabase above), it is constructed +
+                // registered live. The IClock (registered below) stamps the first-discovered date (Story 2.5).
+                // Its consumers — CodexGridView + CodexDetailView (Veilwalkers.UI) — resolve it via
+                // GameServices.Get; their LOGIC is proven headless by Veilwalkers.UI.Tests.
+                var codexService = new CodexService(saveService, _monsterDatabase, clock);
+
+                // EncounterService + its systems (Stories 4.1–4.6, Veilwalkers.Encounter) — SEAM NOW CLOSED
+                // (Epic 8 Gate 0). EncounterService is the encounter spine: it drives the EncounterStateMachine,
+                // owns the AC-2 atomic multi-delta write (charge/credit AND codex in ONE SaveAsync under the
+                // SHARED economyMutationLock), wires OnArSessionInterrupted → Suspended → recovery TryRestore
+                // (AC-3), and exposes the FR-6–10 actions composing LureSystem + planeAnchorService +
+                // monsterSpawner. CRITICAL: it is passed the SAME economyMutationLock constructed above (shared
+                // with CreditService/ProgressionService) — the composed Encounter write MUST serialize against
+                // plain Economy writes (a private lock would let a composed action interleave with a credit
+                // spend and durably persist each other's uncommitted delta). LureSystem/CaptureSystem/SlaySystem
+                // reuse the SAME IRandom instance; LureSystem + SlaySystem reuse the SAME EconomyConfig. The
+                // logic is proven headless by Veilwalkers.Encounter.Tests; this wiring makes it live at runtime.
+                var lureSystem = new LureSystem(_economyConfig, _monsterDatabase, random);
+                var captureSystem = new CaptureSystem(random);
+                var slaySystem = new SlaySystem(_economyConfig, random);
+                var encounterService = new EncounterService(
+                    saveService, creditService, progressionService, codexService,
+                    economyMutationLock, anchorRestoreService, arSessionService,
+                    lureSystem, planeAnchorService, monsterSpawner, captureSystem, slaySystem);
+
+                // AppStateMachine (Story 6.3, this App tier — architecture.md:462-464) — the surface-flow
+                // state machine + the AC-2 insufficient-credits → Shop arbiter. It is NOT a Core service; it
+                // lives here, the "only thing that arbitrates UI ↔ service control flow." Its ctor SUBSCRIBES to
+                // creditService.OnInsufficientCredits (the AC-2 source) AND — now that EncounterService is live
+                // (Epic 8 Gate 0) — to the SECOND shortfall source (EncounterService's OnInsufficientCredits for
+                // composed Lure/Slay spends) via the App-tier ShortfallAdapter, and it owns the encounter
+                // Shop-round-trip snapshot port via the SnapshotPortAdapter (both in EncounterServiceAppAdapters
+                // — thin App-tier binders, since EncounterService sits BELOW App and cannot itself implement an
+                // App-tier interface, AR-5). This replaces the prior IEncounterSnapshotPort.NoEncounter no-op +
+                // null second source. The CONSUMERS — HomePresenter / ArHudPresenter (Veilwalkers.UI) + their
+                // thin Views — resolve this via GameServices.Get; placing those Views in scenes is the Epic-8
+                // view layer. NOTE: AppStateMachine implements IDisposable (it unsubscribes symmetrically —
+                // architecture.md:514-515); Bootstrap has no teardown in a player build (wire-once), but the
+                // Dispose exists for tests + future scene unload.
+                var encounterSnapshotPort =
+                    new EncounterServiceAppAdapters.SnapshotPortAdapter(encounterService);
+                var encounterShortfall =
+                    new EncounterServiceAppAdapters.ShortfallAdapter(encounterService);
+                var appStateMachine = new AppStateMachine(
+                    creditService, encounterSnapshotPort, encounterShortfall);
 
                 GameServices.Register<IClock>(clock);
                 GameServices.Register<IRandom>(random);
@@ -381,6 +378,8 @@ namespace Veilwalkers.App
                 GameServices.Register<PlaneAnchorService>(planeAnchorService);
                 GameServices.Register<AnchorRestoreService>(anchorRestoreService);
                 GameServices.Register<MonsterSpawner>(monsterSpawner);
+                GameServices.Register<CodexService>(codexService);
+                GameServices.Register<EncounterService>(encounterService);
                 GameServices.Register<IBillingService>(billingService);
                 GameServices.Register<AppStateMachine>(appStateMachine);
 

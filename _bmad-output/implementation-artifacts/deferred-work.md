@@ -1,5 +1,15 @@
 # Deferred Work
 
+## ✅ Epic 8 Gate 0 — MonsterDatabase + scenes authored, Bootstrap seams closed (2026-06-17)
+
+The Editor-authoring session landed (James in Editor) + the headless seam closure (this session). **Closes** the long-standing `MonsterDatabase.asset` blocker (Story 2.2 Task-3) and the 4.1–4.6 + 2.3 "no live EncounterService/CodexService registration" deferrals (the registration CODE — runtime resolution stays a device claim). What landed:
+
+- **Assets (Editor):** 5 MVP monster `.asset` files (`Mon01`–`Mon05`, `Mon03_VeilCrawler` = Rare), `MonsterDatabase.asset` populated (count 5), 5 placeholder Art sprites, the 5 game scenes (`Onboarding`/`Home`/`ARHunt`/`Codex`/`Shop`) + the six-slot build order, and the `_economyConfig` inspector assignment on `Bootstrap.unity`.
+- **Seam code (headless):** `Bootstrap.cs` now constructs + registers `CodexService` + `EncounterService` (sharing the `economyMutationLock`) + wires the `AppStateMachine` to the live encounter via two thin App-tier binders in the new `EncounterServiceAppAdapters.cs` (`SnapshotPortAdapter` : `IEncounterSnapshotPort`, `ShortfallAdapter` : `IInsufficientCreditsSource` — `EncounterService` sits below App in the graph so cannot implement App-tier interfaces directly, AR-5). Added `[SerializeField] MonsterDatabase _monsterDatabase` (null-checked, the `_economyConfig` precedent).
+- **Tests (headless):** new on-disk `MonsterDatabaseAssetAuditTests` (5 pins, all passing); deleted the tautological `Asset_file_name_convention` test; un-ignored the `_economyConfig` build-settings pin (now passing); added the `_monsterDatabase` pin. **690 total / 689 passed / 0 failed / 1 ignored, 0 `error CS`.**
+
+**REMAINING (the one Editor drag this introduced):** assign `MonsterDatabase.asset` to the new `_monsterDatabase` slot on the Bootstrap component in `Bootstrap.unity`, then un-ignore `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_MonsterDatabase_reference`. Until then, boot would throw (the `WireServices` null-check — a deliberate fail-fast, the `_economyConfig` precedent). Owner: the next Editor session. Tracked in `docs/epic-8-device-release-gate.md` Gate 0.3. The on-device "GameServices resolves CodexService/EncounterService post-boot" check stays a Gate-5 device claim.
+
 ## ⮕ RENDER / SCENE / DEVICE-BUILD class re-pointed to Epic 8 (2026-06-16 — retro Action Items #2 + #5)
 
 Every deferred entry below whose owner was stamped **"Epic 6"**, **"Story 6.3"**, **"asset-authoring"**, **"the AR-rig scene"**, **"the device build"**, or **"the IAP-import session"** is part of the single **render / scene / MonoBehaviour-view / AR-rig / device-build** class that Epics 2–6 deferred uniformly. The Epic-6 retrospective (2026-06-16) created **Epic 8: Render, Scene & Device-Build Pass** to own this entire class so no entry names an already-closed story/epic as its future owner. The authoritative owner mapping (see `docs/epics.md#Epic-8`):

@@ -106,14 +106,12 @@ namespace Veilwalkers.Monsters.Tests
                 "Monster IDs follow the stable monNN format (mon01..mon67).");
         }
 
-        [Test]
-        public void Asset_file_name_convention_is_Id_underscore_Name()
-        {
-            // AC-4 convention expressed as a derivable name: <Id>_<PascalName>.asset.
-            var def = Definition(id: "mon01", displayName: "Antlered Shade");
-            var expectedStem = def.Id.Substring(0, 1).ToUpperInvariant() + def.Id.Substring(1)
-                + "_" + def.DisplayName.Replace(" ", string.Empty);
-            Assert.That(expectedStem, Is.EqualTo("Mon01_AntleredShade"));
-        }
+        // The old `Asset_file_name_convention_is_Id_underscore_Name` test was removed (Epic 8
+        // Gate 0): it was tautological — it rebuilt the expected stem from constants it set
+        // itself and asserted equality against a literal, never touching a real asset. Its
+        // falsifiable replacement is the on-disk audit
+        // `Veilwalkers.Architecture.Tests.MonsterDatabaseAssetAuditTests
+        // .Each_populated_definition_asset_follows_Id_underscore_Name`, which loads the real
+        // authored .asset files via AssetDatabase and checks their actual filenames.
     }
 }

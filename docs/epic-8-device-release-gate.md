@@ -10,23 +10,24 @@ Status legend: ☐ not started · ◐ in progress · ☑ done (verified on devic
 
 ## Gate 0 — Editor authoring foundations (unblocks everything)
 
-### 0.1 Author `MonsterDatabase.asset` + the MVP monster assets  (Story 8.2 / closes Story 2.2 Task-3)
-- ☐ Author 3–5 MVP monster `.asset` files (`MonsterDefinition` ScriptableObjects), incl. ≥1 Rare+ with **real imported sprite art** (a null `Art` fails `Validate()`).
-- ☐ Author `MonsterDatabase.asset`, assign the monsters into it.
-- ☐ Add the on-disk audit test (load via `AssetDatabase`; assert `Validate()` empty + filenames `<Id>_<Name>` + `PopulatedCount ∈ [3..5]`); delete the old tautological `Asset_file_name_convention` test.
+### 0.1 Author `MonsterDatabase.asset` + the MVP monster assets  (Story 8.2 / closes Story 2.2 Task-3) — ☑ DONE (2026-06-17)
+- ☑ Authored 5 MVP monster `.asset` files (`Mon01_AntleredShade` … `Mon05_NightmareMaw`), `Mon03_VeilCrawler` = Rare (≥1 Rare+), each with assigned `Art` (placeholder sprites — swap for final art in a later polish pass).
+- ☑ Authored `MonsterDatabase.asset` with the 5 monsters assigned (`PopulatedCount == 5`).
+- ☑ Added the on-disk audit test `MonsterDatabaseAssetAuditTests` (loads via `AssetDatabase`; asserts `Validate()` empty + filenames `<Id>_<Name>` + `PopulatedCount ∈ [3..5]` + ≥1 Rare+ via `RarityThresholds.GuaranteedRareFloor`); deleted the old tautological `Asset_file_name_convention` test from `MonsterDefinitionTests`.
 - **Blocks:** 0.3 (Bootstrap seam closure), all gameplay-on-device.
 
-### 0.2 Author the 5 `.unity` game scenes  (Story 8.2)
-- ☐ `Onboarding.unity`, `Home.unity`, `AR Hunt` (minimal placeholder — 8.3 fills the rig), `Codex.unity`, `Shop.unity`.
-- ☐ Register the six-slot build order in `EditorBuildSettings.asset`: `Bootstrap(0) → Onboarding(1) → Home(2) → AR Hunt(3) → Codex(4) → Shop(5)`, each enabled. (The `BuildSettingsGuardTests.Every_enabled_scene_resolves_to_a_real_unity_asset` pin then passes with 6 real scenes — no test edit needed.)
+### 0.2 Author the 5 `.unity` game scenes  (Story 8.2) — ☑ DONE (2026-06-17)
+- ☑ `Onboarding.unity`, `Home.unity`, `ARHunt.unity` (minimal placeholder — 8.3 fills the rig), `Codex.unity`, `Shop.unity` authored (near-empty placeholders).
+- ☑ Registered the six-slot build order in `EditorBuildSettings.asset`: `Bootstrap(0) → Onboarding(1) → Home(2) → ARHunt(3) → Codex(4) → Shop(5)`, each enabled. `BuildSettingsGuardTests.Every_enabled_scene_resolves_to_a_real_unity_asset` passes with 6 real scenes.
 - **Blocks:** 8.4 (views live in scenes), 8.7 (smoke).
 
-### 0.3 Assign `_economyConfig` + close the Bootstrap registration seams  (Story 8.2)
-- ☐ In `Bootstrap.unity`, assign the `EconomyConfig` asset on the Bootstrap component (inspector drag). **Un-ignore** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_EconomyConfig_reference`. *(Latent boot-failure until done — `WireServices` requires it.)*
-- ☐ In `Bootstrap.cs`, close the seams (the seam comments ~310–341 give exact steps): construct + register `CodexService(saveService, monsterDatabase, clock)`; construct + register `LureSystem/CaptureSystem/SlaySystem/EncounterService` (pass the SHARED `economyMutationLock`); wire `EncounterService` as the 2nd `IInsufficientCreditsSource` + the real `IEncounterSnapshotPort` (replace `NoEncounter`/null).
-- ☐ Confirm `AcyclicDependencyTests` stays green (headless guard of the registration code).
+### 0.3 Assign `_economyConfig` + close the Bootstrap registration seams  (Story 8.2) — ◐ IN PROGRESS
+- ☑ In `Bootstrap.unity`, assigned the `EconomyConfig` asset on the Bootstrap component (inspector drag). **Un-ignored** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_EconomyConfig_reference` — now active + passing.
+- ☑ In `Bootstrap.cs`, closed the seams: construct + register `CodexService(saveService, _monsterDatabase, clock)`; construct + register `LureSystem/CaptureSystem/SlaySystem/EncounterService` (passing the SHARED `economyMutationLock`); wired `EncounterService` as the 2nd shortfall source + the real `IEncounterSnapshotPort` via two thin App-tier binders in `EncounterServiceAppAdapters.cs` (the `ShortfallAdapter` + `SnapshotPortAdapter` — `EncounterService` sits below App so cannot implement App-tier interfaces directly, AR-5; replaces the `NoEncounter`/null no-ops). Added `[SerializeField] MonsterDatabase _monsterDatabase` (null-checked in `WireServices`, the `_economyConfig` precedent).
+- ☑ `AcyclicDependencyTests` stays green (headless guard of the registration code); full EditMode gate 689 passed / 0 failed / 1 ignored, 0 `error CS`.
+- ☐ **REMAINING (Editor drag):** In `Bootstrap.unity`, assign `MonsterDatabase.asset` to the new `_monsterDatabase` slot on the Bootstrap component. **Un-ignore** `BuildSettingsGuardTests.Bootstrap_scene_assigns_the_MonsterDatabase_reference` once assigned. *(Latent boot-failure until done — `WireServices` now requires it, exactly like `_economyConfig`.)*
 - ☐ On device/PlayMode: confirm `GameServices` resolves `CodexService` + `EncounterService` post-boot.
-- **Blocked by:** 0.1. **Settles:** the 4.1–4.6 + 2.3 "no live EncounterService/CodexService registration" deferrals.
+- **Blocked by:** 0.1. **Settles:** the 4.1–4.6 + 2.3 "no live EncounterService/CodexService registration" deferrals (the registration CODE; runtime resolution is the device claim).
 
 ---
 

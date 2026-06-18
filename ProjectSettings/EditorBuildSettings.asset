@@ -8,6 +8,21 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Veilwalkers/Scenes/Bootstrap.unity
     guid: 3f8a2b6c9d4e1f7a8b5c0d3e6f9a2b41
+  - enabled: 1
+    path: Assets/Veilwalkers/Scenes/Onboarding.unity
+    guid: 47b9a4ba7079566458988b4e10e803db
+  - enabled: 1
+    path: Assets/Veilwalkers/Scenes/Home.unity
+    guid: 5dea34ae8f868d44d8a1def3c5655ee2
+  - enabled: 1
+    path: Assets/Veilwalkers/Scenes/ARHunt.unity
+    guid: 6d4242a27303f0440be4872514f4a543
+  - enabled: 1
+    path: Assets/Veilwalkers/Scenes/Codex.unity
+    guid: aaef3a109cb57d347938291c2a55dc57
+  - enabled: 1
+    path: Assets/Veilwalkers/Scenes/Shop.unity
+    guid: 927a10326867db347938a795c3f95a8d
   m_configObjects:
     UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: 4fc640ce4da1fe742abb31321e196b01,
       type: 2}

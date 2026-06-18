@@ -120,25 +120,45 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         [Test]
-        [Ignore("Editor checklist (Story 8.2): assign the EconomyConfig asset to the Bootstrap " +
-                "component in Bootstrap.unity (an inspector drag — unsafe to hand-author as scene " +
-                "YAML). The on-disk Bootstrap MonoBehaviour currently has NO _economyConfig ref, a " +
-                "latent boot-failure since WireServices requires it. Un-ignore this pin once assigned.")]
         public void Bootstrap_scene_assigns_the_EconomyConfig_reference()
+        {
+            AssertBootstrapAssignsSerializedAsset(
+                "_economyConfig", "EconomyConfig",
+                "WireServices requires it; an unassigned config fails boot.");
+        }
+
+        [Test]
+        [Ignore("Editor checklist (Epic 8 Gate 0): the seam-closure added " +
+                "[SerializeField] MonsterDatabase _monsterDatabase to Bootstrap, null-checked in " +
+                "WireServices (a fatal boot misconfiguration when unassigned — the _economyConfig " +
+                "precedent). Assign MonsterDatabase.asset to the Bootstrap component in " +
+                "Bootstrap.unity (an inspector drag — unsafe to hand-author as scene YAML). The " +
+                "on-disk Bootstrap MonoBehaviour has NO _monsterDatabase ref yet. Un-ignore this " +
+                "pin once assigned.")]
+        public void Bootstrap_scene_assigns_the_MonsterDatabase_reference()
+        {
+            AssertBootstrapAssignsSerializedAsset(
+                "_monsterDatabase", "MonsterDatabase",
+                "WireServices requires it (CodexService + LureSystem take it non-null); " +
+                "an unassigned registry fails boot.");
+        }
+
+        // Asserts the Bootstrap MonoBehaviour serializes `<field>: {fileID: N(!=0), …}` —
+        // i.e. the inspector drag assigned a real asset, not the unassigned `{fileID: 0}`/absent.
+        private static void AssertBootstrapAssignsSerializedAsset(
+            string fieldName, string assetName, string whyRequired)
         {
             string file = ResolveExistingProjectRootFile(BootstrapScenePath, "Bootstrap.unity");
             string text = File.ReadAllText(file);
 
-            // The Bootstrap MonoBehaviour serializes `_economyConfig: {fileID: …, guid: …, type: 2}`;
-            // an unassigned ref is `{fileID: 0}` or absent entirely.
-            var rx = new Regex(@"_economyConfig:\s*\{fileID:\s*(\d+)");
+            var rx = new Regex(Regex.Escape(fieldName) + @":\s*\{fileID:\s*(\d+)");
             Match m = rx.Match(text);
 
             Assert.That(m.Success, Is.True,
-                "Bootstrap.unity has no _economyConfig serialized field — assign the EconomyConfig asset " +
-                "on the Bootstrap component (WireServices requires it; an unassigned config fails boot).");
+                $"Bootstrap.unity has no {fieldName} serialized field — assign the {assetName} asset " +
+                $"on the Bootstrap component ({whyRequired}).");
             Assert.That(m.Groups[1].Value, Is.Not.EqualTo("0"),
-                "Bootstrap.unity's _economyConfig is unassigned (fileID 0) — assign the EconomyConfig asset.");
+                $"Bootstrap.unity's {fieldName} is unassigned (fileID 0) — assign the {assetName} asset.");
         }
     }
 }
