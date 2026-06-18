@@ -12,7 +12,7 @@ namespace Veilwalkers.AR
     /// current camera frustum, fall back to absolute-nearest only if nothing is in view"
     /// (architecture.md:471-473) is a camera-relative concept; both the in-frustum ranking and the
     /// absolute-nearest fallback use the SAME camera-relative distance so the two are consistent. The
-    /// device adapter (<see cref="ArcoreAnchorProvider"/>, <c>TODO Story 6.3</c>) computes
+    /// device adapter (<see cref="ArcoreAnchorProvider"/>, <c>TODO Story 8.3</c>) computes
     /// <see cref="DistanceFromCamera"/> as the camera-to-plane distance.
     /// </para>
     /// </summary>

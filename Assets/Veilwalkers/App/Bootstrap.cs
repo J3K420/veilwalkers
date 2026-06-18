@@ -247,7 +247,7 @@ namespace Veilwalkers.App
                 // GameObjectSpawnSink returns synthetic ids), so construction never throws at boot. The adapters'
                 // #if UNITY_ANDROID device/scene glue (the real ARPlaneManager/ARAnchorManager/ARRaycastManager
                 // re-acquire + frustum-projected plane candidates + the URP monster-prefab pool) is a
-                // TODO(Story 6.3) wired when the AR rig scene lands — the same not-yet-placed scene AR rig the
+                // TODO(Story 8.3) wired when the AR rig scene lands — the same not-yet-placed scene AR rig the
                 // ArcoreSession device glue waits on. The MonsterSpawner cap default (8) is a provisional tunable
                 // subject to the NFR-1 device-perf pass. AnchorRestoreService.TryRestore is the DECISION; the
                 // EncounterStateMachine.Suspended consumer + the recovery CALL SITE (calling TryRestore after

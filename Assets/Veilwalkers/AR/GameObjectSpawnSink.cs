@@ -13,8 +13,9 @@ namespace Veilwalkers.AR
     /// <c>GameObject</c> pool live in the AR rig scene, and Story 3.4 builds no scene. So the <c>#else</c>
     /// editor path is a logged no-op stub (it returns a synthetic incrementing id so the spawner's
     /// bookkeeping is reachable in-editor), and the <c>#if UNITY_ANDROID</c> device path is a documented
-    /// <c>TODO</c> wired to the real monster prefab pool when the AR rig scene lands — Story 6.3 (scene
-    /// placement). The <see cref="MonsterSpawner"/> pooling/cap accounting is proven against
+    /// <c>TODO</c> wired to the real monster prefab pool when the AR rig scene lands — Story 8.3 (author
+    /// the AR rig + the device bodies + the monster prefab). The <see cref="MonsterSpawner"/> pooling/cap
+    /// accounting is proven against
     /// <c>FakeSpawnSink</c>; this <c>GameObject</c> glue is the deferred, device/scene-only edge.
     /// </para>
     /// <para>
@@ -23,12 +24,12 @@ namespace Veilwalkers.AR
     /// </summary>
     public sealed class GameObjectSpawnSink : ISpawnSink
     {
-        // A monotonically increasing synthetic id for the stub paths. The real device adapter (Story 6.3)
+        // A monotonically increasing synthetic id for the stub paths. The real device adapter (Story 8.3)
         // returns a stable pool-slot/instance id instead.
         private int _nextId;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // TODO(Story 6.3): wire to the real monster prefab pool placed in the AR rig scene. Instantiate →
+        // TODO(Story 8.3): wire to the real monster prefab pool placed in the AR rig scene. Instantiate →
         // Object.Instantiate(monsterPrefab, pose.position, pose.rotation) into the AR session origin,
         // return a stable instance id; Activate → SetActive(true) + transform.SetPositionAndRotation(pose);
         // Deactivate → SetActive(false) (return to the pool). Until the prefab + scene land there is no
@@ -37,18 +38,18 @@ namespace Veilwalkers.AR
         // device/scene-only edge.
         public int Instantiate(in Pose pose)
         {
-            GameLog.Info("GameObjectSpawnSink.Instantiate: device-path stub — the monster prefab/AR rig is not placed yet (TODO Story 6.3).");
+            GameLog.Info("GameObjectSpawnSink.Instantiate: device-path stub — the monster prefab/AR rig is not placed yet (TODO Story 8.3).");
             return _nextId++;
         }
 
         public void Activate(int id, in Pose pose)
         {
-            GameLog.Info($"GameObjectSpawnSink.Activate({id}): device-path stub (TODO Story 6.3).");
+            GameLog.Info($"GameObjectSpawnSink.Activate({id}): device-path stub (TODO Story 8.3).");
         }
 
         public void Deactivate(int id)
         {
-            GameLog.Info($"GameObjectSpawnSink.Deactivate({id}): device-path stub (TODO Story 6.3).");
+            GameLog.Info($"GameObjectSpawnSink.Deactivate({id}): device-path stub (TODO Story 8.3).");
         }
 #else
         // Editor / non-Android: no monster prefab / AR rig scene exists. Logged no-op stubs that return a
