@@ -1,6 +1,6 @@
 # Story 8.3: Author the AR rig scene contents and its device glue
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
