@@ -18,11 +18,11 @@ namespace Veilwalkers.Architecture.Tests
     /// (c) Bootstrap is enabled at build index 0 (the composition root must load first).
     /// </para>
     /// <para>
-    /// The <c>_economyConfig</c> assignment pin is <c>[Ignore]</c>d-pending: the on-disk
-    /// Bootstrap.unity MonoBehaviour currently has NO <c>_economyConfig</c> serialized reference (a
-    /// real latent boot-failure — <c>WireServices</c> requires it), and closing the gap is an Editor
-    /// inspector assignment (unsafe to hand-author as scene YAML). The <c>[Ignore]</c> is a VISIBLE
-    /// pending pin (not a faked green); the Editor session that assigns the ref un-ignores it.
+    /// The <c>_economyConfig</c> + <c>_monsterDatabase</c> assignment pins were once <c>[Ignore]</c>d-pending
+    /// (the refs are Editor inspector assignments, unsafe to hand-author as scene YAML); the Gate-0 Editor
+    /// session that assigned both refs (Bootstrap.unity has them serialized now) un-ignored both pins, so they
+    /// are plain active <c>[Test]</c>s today and must stay green — a future scene edit that drops either ref
+    /// is a real latent boot-failure (<c>WireServices</c> requires both), and these pins catch it.
     /// </para>
     /// <para>
     /// [Source: docs/epics.md#Story-8.2; deferred-work.md (the "Story 8.2 — Editor/device authoring

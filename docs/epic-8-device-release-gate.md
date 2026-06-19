@@ -1,5 +1,7 @@
 # Epic 8 — Device & Editor Release-Gate Checklist
 
+> **📖 For the click-by-click how-to, follow [`docs/epic-8-editor-walkthrough.md`](epic-8-editor-walkthrough.md)** — the unified Gate 1→5 walkthrough (verified 2026-06-18, supersedes the older `epic-8-editor-runbook.md`). **This file is now the ☐/☑ RECORD** — update the boxes here as you finish each item. *(Note: a few figures below predate the walkthrough audit — the current headless floor is **691 / 690-pass / 1-ignored**, and Gate 0's MonsterDatabase assignment is **done**, not pending. Trust the walkthrough where they differ.)*
+
 The on-device / in-Editor work that **cannot be verified headlessly** and so is NOT auto-claimed done by the story automator. The headless slices of Epic 8 (Story 8.1 build-config-as-data; Story 8.2 SampleScene removal + build-settings guard) are committed + green; everything below needs the Unity Editor, a real ARCore device, secrets, and/or a GPU. Work it top-to-bottom — the order respects the dependency chain (build config → scenes/rig → views → render → a11y → signed .aab + on-device smoke).
 
 **Why this exists:** Epic 8 is the render/scene/device-build layer Epics 2–6 deferred. An LLM in a headless session can pin the *contracts* (config-as-text, asmdef edges, presenter/plan logic) but cannot author correct `.unity` scenes, import sprite art, run an `ARSession`, build a signed `.aab`, or measure on-device FPS. Those are listed here as an explicitly-owned gate so the "670/670 green" decision floor is never mistaken for "shippable."

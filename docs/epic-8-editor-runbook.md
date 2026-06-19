@@ -1,5 +1,7 @@
 # Epic 8 — Editor Runbook (Stories 8.3 + 8.4)
 
+> **⚠️ Superseded — use [`docs/epic-8-editor-walkthrough.md`](epic-8-editor-walkthrough.md).** That unified walkthrough covers all of Gates 1→5 (this runbook stopped at 1–2), was re-verified against the live codebase 2026-06-18, and corrects drift found here (e.g. it flags that ShopView needs a presenter too, and carries the current 691/690-pass/1-ignored floor). This file is kept for history only.
+
 **Audience:** you, James, sitting at the PC with the Unity Editor open and (for the device-smoke steps) an ARCore phone plugged in.
 **Purpose:** turn the device/Editor-gated parts of Stories 8.3 (AR rig + device glue) and 8.4 (View wiring + navigation) into a **mechanical checklist** — no exploration, no "what was that GUID again." Authored 2026-06-18 from the live codebase so every path, type, test name, and asset is verified to exist *now*.
 
