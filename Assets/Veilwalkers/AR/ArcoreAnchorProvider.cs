@@ -1,6 +1,11 @@
 using UnityEngine;
 using Veilwalkers.Core;
 using Veilwalkers.Core.Contracts;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using System.Collections.Generic;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
+#endif
 
 namespace Veilwalkers.AR
 {
@@ -30,56 +35,239 @@ namespace Veilwalkers.AR
     public sealed class ArcoreAnchorProvider : IArAnchorProvider
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // TODO(Story 8.3): wire to the scene-placed AR Foundation ARPlaneManager / ARRaycastManager /
-        // ARAnchorManager when the AR rig scene lands. HasTrackablePlane → ARPlaneManager.trackables.count
-        // > 0 (planes whose trackingState is Tracking); TryGetPlacementPose → ARRaycastManager.Raycast
-        // from screen-center against PlaneWithinPolygon, take the first hit's pose + the hit trackable's
-        // TrackableId; TryCreateAnchor → ARAnchorManager.AttachAnchor(plane, pose) (or AddAnchor), then
-        // build the AnchorToken from the anchor's trackableId + session-relative pose. Until the rig is
-        // placed there is no plane subsystem to drive, so these are conservative stubs that never crash
-        // (NFR-3): report NO plane (so the device build coaches rather than spawning into empty space)
-        // and return false/default. The PlaneAnchorService decision is proven against
-        // FakeArAnchorProvider; this device glue is the deferred, device-only, CI-untestable edge
-        // (architecture.md:591). Occlusion (AROcclusionManager + the URP occlusion shader) and
-        // environmental lighting (light-estimation → scene light) are AR-rig-scene render features and
-        // also land in Story 8.3 (occlusion + lighting render) / Epic 6.
-        public bool HasTrackablePlane => false;
+        // Story 8.3 device body. Drives the scene-placed ARPlaneManager / ARRaycastManager /
+        // ARAnchorManager (authored into ARHunt.unity in Gate 1). Managers are resolved LAZILY on first
+        // use — the rig is not live when Bootstrap constructs this adapter. All DECISIONS (coach-vs-place;
+        // Restored/RelocatedToPlane/Failed) stay in PlaneAnchorService / AnchorRestoreService; this is
+        // thin subsystem glue. Never throws (NFR-3): degrades to "no plane / no re-acquire / no candidates"
+        // so the services run their coaching / Failed paths.
+        private ARPlaneManager _planeManager;
+        private ARRaycastManager _raycastManager;
+        private ARAnchorManager _anchorManager;
+
+        private bool ResolveManagers()
+        {
+            if (_planeManager != null && _raycastManager != null && _anchorManager != null)
+            {
+                return true;
+            }
+
+            // All three live on the XR Origin GameObject; one origin lookup finds them together.
+            if (_planeManager == null)
+            {
+                _planeManager = Object.FindObjectOfType<ARPlaneManager>(includeInactive: true);
+            }
+
+            if (_raycastManager == null)
+            {
+                _raycastManager = Object.FindObjectOfType<ARRaycastManager>(includeInactive: true);
+            }
+
+            if (_anchorManager == null)
+            {
+                _anchorManager = Object.FindObjectOfType<ARAnchorManager>(includeInactive: true);
+            }
+
+            bool ready = _planeManager != null && _raycastManager != null && _anchorManager != null;
+            if (!ready)
+            {
+                GameLog.Warn("ArcoreAnchorProvider: AR plane/raycast/anchor managers not in scene yet; degrading (NFR-3).");
+            }
+
+            return ready;
+        }
+
+        public bool HasTrackablePlane
+        {
+            get
+            {
+                if (!ResolveManagers())
+                {
+                    return false;
+                }
+
+                foreach (ARPlane plane in _planeManager.trackables)
+                {
+                    if (plane.trackingState == TrackingState.Tracking)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        private static readonly List<ARRaycastHit> RaycastHits = new List<ARRaycastHit>();
 
         public bool TryGetPlacementPose(out Pose pose, out string planeId)
         {
-            GameLog.Info("ArcoreAnchorProvider.TryGetPlacementPose: device-path stub — the AR rig is not placed yet (TODO Story 8.3).");
             pose = Pose.identity;
             planeId = null;
-            return false;
+
+            if (!ResolveManagers())
+            {
+                return false;
+            }
+
+            try
+            {
+                Camera cam = Camera.main;
+                Vector2 screenCenter = cam != null
+                    ? new Vector2(cam.pixelWidth * 0.5f, cam.pixelHeight * 0.5f)
+                    : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+
+                RaycastHits.Clear();
+                if (!_raycastManager.Raycast(screenCenter, RaycastHits, TrackableType.PlaneWithinPolygon))
+                {
+                    return false;
+                }
+
+                ARRaycastHit hit = RaycastHits[0];
+                pose = hit.pose;
+                planeId = hit.trackableId.ToString();
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreAnchorProvider.TryGetPlacementPose failed; degrading (NFR-3). " + ex.Message);
+                return false;
+            }
         }
 
         public bool TryCreateAnchor(in Pose pose, string planeId, out AnchorToken token)
         {
-            GameLog.Info("ArcoreAnchorProvider.TryCreateAnchor: device-path stub (TODO Story 8.3).");
-            token = default;
-            return false;
+            token = AnchorToken.None;
+
+            if (!ResolveManagers())
+            {
+                return false;
+            }
+
+            try
+            {
+                ARAnchor anchor = null;
+
+                // Prefer attaching to the named plane (more stable); fall back to a free-standing anchor.
+                ARPlane plane = FindPlane(planeId);
+                if (plane != null)
+                {
+                    anchor = _anchorManager.AttachAnchor(plane, pose);
+                }
+
+                if (anchor == null)
+                {
+                    anchor = _anchorManager.AddAnchor(pose);
+                }
+
+                if (anchor == null)
+                {
+                    return false;
+                }
+
+                token = new AnchorToken(anchor.trackableId.ToString(), pose.position, pose.rotation);
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreAnchorProvider.TryCreateAnchor failed; degrading (NFR-3). " + ex.Message);
+                return false;
+            }
         }
 
-        // TODO(Story 8.3): restore path — TryReacquireAnchor → re-resolve the saved TrackableId via
-        // ARAnchorManager (ARSession persistent/cloud anchor re-acquire or trackable re-find), out the
-        // re-acquired pose; TryGetRelocationCandidates → ARPlaneManager.trackables projected against the
-        // camera frustum (Camera.main.WorldToViewportPoint to set InCameraFrustum) with the camera-to-plane
-        // distance, as PlaneCandidate[]. Until the rig is placed there is nothing to re-acquire / no planes,
-        // so these are conservative stubs that never crash (NFR-3): re-acquire fails, no candidates — so the
-        // device build exercises the restore Failed path. The AnchorRestoreService decision is proven
-        // against FakeArAnchorProvider; this device glue is the deferred, device-only, CI-untestable edge.
+        private ARPlane FindPlane(string planeId)
+        {
+            if (string.IsNullOrEmpty(planeId) || _planeManager == null)
+            {
+                return null;
+            }
+
+            foreach (ARPlane plane in _planeManager.trackables)
+            {
+                if (plane.trackableId.ToString() == planeId)
+                {
+                    return plane;
+                }
+            }
+
+            return null;
+        }
+
         public bool TryReacquireAnchor(in AnchorToken token, out Pose pose)
         {
-            GameLog.Info("ArcoreAnchorProvider.TryReacquireAnchor: device-path stub (TODO Story 8.3).");
             pose = Pose.identity;
-            return false;
+
+            if (!ResolveManagers())
+            {
+                return false;
+            }
+
+            try
+            {
+                // Re-find the still-tracked anchor by its saved trackable id.
+                foreach (ARAnchor anchor in _anchorManager.trackables)
+                {
+                    if (anchor.trackableId.ToString() == token.trackableId &&
+                        anchor.trackingState == TrackingState.Tracking)
+                    {
+                        pose = new Pose(anchor.transform.position, anchor.transform.rotation);
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreAnchorProvider.TryReacquireAnchor failed; degrading (NFR-3). " + ex.Message);
+                return false;
+            }
         }
 
         public bool TryGetRelocationCandidates(out PlaneCandidate[] candidates)
         {
-            GameLog.Info("ArcoreAnchorProvider.TryGetRelocationCandidates: device-path stub (TODO Story 8.3).");
             candidates = System.Array.Empty<PlaneCandidate>();
-            return false;
+
+            if (!ResolveManagers())
+            {
+                return false;
+            }
+
+            try
+            {
+                Camera cam = Camera.main;
+                var list = new List<PlaneCandidate>();
+
+                foreach (ARPlane plane in _planeManager.trackables)
+                {
+                    if (plane.trackingState != TrackingState.Tracking)
+                    {
+                        continue;
+                    }
+
+                    Vector3 planePos = plane.transform.position;
+                    var candidatePose = new Pose(planePos, plane.transform.rotation);
+
+                    bool inFrustum = false;
+                    float distance = 0f;
+                    if (cam != null)
+                    {
+                        distance = Vector3.Distance(cam.transform.position, planePos);
+                        Vector3 vp = cam.WorldToViewportPoint(planePos);
+                        inFrustum = vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f;
+                    }
+
+                    list.Add(new PlaneCandidate(candidatePose, inFrustum, distance));
+                }
+
+                candidates = list.ToArray();
+                return candidates.Length > 0;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreAnchorProvider.TryGetRelocationCandidates failed; degrading (NFR-3). " + ex.Message);
+                return false;
+            }
         }
 #else
         // Editor / non-Android: the AR Foundation plane/anchor subsystem does not exist. Report NO

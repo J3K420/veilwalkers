@@ -2,7 +2,9 @@
     "name": "Veilwalkers.AR",
     "rootNamespace": "Veilwalkers.AR",
     "references": [
-        "Veilwalkers.Core"
+        "Veilwalkers.Core",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.CoreUtils"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

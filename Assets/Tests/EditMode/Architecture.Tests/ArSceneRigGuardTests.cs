@@ -115,15 +115,39 @@ namespace Veilwalkers.Architecture.Tests
                 return null;
             }
 
-            // <type>.cs.meta is unique within the AR Foundation / XR packages we depend on.
-            string metaFile = Directory
-                .EnumerateFiles(packageCache, typeName + ".cs.meta", SearchOption.AllDirectories)
-                .FirstOrDefault();
+            // CR fix (Story 8.3): Directory.EnumerateFiles matches its pattern CASE-INSENSITIVELY on
+            // Windows, so "ARSession.cs.meta" also matches arcore's "ArSession.cs.meta" — a DIFFERENT
+            // script with a DIFFERENT guid that is NOT the component in the scene. FirstOrDefault would
+            // then pick the wrong meta and resolve a guid the scene never references → a false RED even
+            // against a correct rig. So we re-filter the enumerator's hits to the meta whose ACTUAL file
+            // name equals "<type>.cs.meta" EXACTLY (Ordinal, case-sensitive), the soundly-matchable token.
+            string expectedFileName = typeName + ".cs.meta";
+            string[] exactMatches = Directory
+                .EnumerateFiles(packageCache, expectedFileName, SearchOption.AllDirectories)
+                .Where(f => string.Equals(
+                    Path.GetFileName(f), expectedFileName, System.StringComparison.Ordinal))
+                .ToArray();
 
-            if (metaFile == null)
+            // No EXACT-case match → the package script is not resolvable on disk (or only a wrong-case
+            // homograph like arcore's ArSession exists). Stay null so the caller fails loudly, never
+            // resolves a colliding guid.
+            if (exactMatches.Length == 0)
             {
                 return null;
             }
+
+            // Our AR types each have a single exact-case meta, so this is normally exactMatches[0]. Be
+            // defensive only as a TIEBREAKER (never as the primary filter, per the contract): if more than
+            // one exact-case meta survives, prefer a Runtime/non-Editor, non-Tests path so an editor- or
+            // test-only stub can never shadow the runtime component the scene actually serializes.
+            string metaFile = exactMatches.Length == 1
+                ? exactMatches[0]
+                : (exactMatches.FirstOrDefault(f =>
+                       f.IndexOf("/Editor/", System.StringComparison.OrdinalIgnoreCase) < 0 &&
+                       f.IndexOf("\\Editor\\", System.StringComparison.OrdinalIgnoreCase) < 0 &&
+                       f.IndexOf("/Tests/", System.StringComparison.OrdinalIgnoreCase) < 0 &&
+                       f.IndexOf("\\Tests\\", System.StringComparison.OrdinalIgnoreCase) < 0)
+                   ?? exactMatches[0]);
 
             foreach (string line in File.ReadAllLines(metaFile))
             {
@@ -138,15 +162,6 @@ namespace Veilwalkers.Architecture.Tests
         }
 
         [Test]
-        [Ignore("Editor checklist (Story 8.3): author the AR rig into ARHunt.unity — XR Origin + AR camera " +
-                "+ camera-background + the six AR managers (ARSession, ARPlaneManager, ARAnchorManager, " +
-                "ARRaycastManager, AROcclusionManager, ARCameraManager) with the ARCore loader enabled " +
-                "(AC-1). The on-disk ARHunt.unity is the 8.2 placeholder (Directional Light + Main Camera " +
-                "only, NO AR rig), so this pin FAILS until the rig lands. A correct rig (valid component " +
-                "fileIDs/guids) is Editor work, unsafe to hand-author as scene YAML. Un-ignore in the " +
-                "Editor session that authors the rig (docs/epic-8-device-release-gate.md Gate 1). " +
-                "Matched by serialized m_Script GUID (resolved from the package .cs.meta), not type name. " +
-                "Mutation discipline: once green, removing any one rig component must turn this RED.")]
         public void ARHunt_scene_contains_the_AR_rig_component_types()
         {
             string scene = ReadArHuntScene();

@@ -1,5 +1,11 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Veilwalkers.Core;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
+#endif
 
 namespace Veilwalkers.AR
 {
@@ -28,39 +34,141 @@ namespace Veilwalkers.AR
     public sealed class ArcoreSession : IArSession
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // TODO(Story 8.3): wire to the scene-placed AR Foundation ARSession when the AR rig scene
-        // lands. IsSupported → ARSession.state (Ready/SessionInitializing vs Unsupported/NeedsInstall);
-        // StartAsync → enable the ARSession component + await the subsystem reaching a tracking-ready
-        // state, AND honor the Stop-cancels-an-in-flight-StartAsync contract (IArSession.cs L72-82);
-        // Pause/Resume → ARSession.enabled toggle; Stop → ARSession.Reset()/disable. Until the
-        // rig is placed there is no ARSession instance to drive, so these are conservative stubs that
-        // never crash (NFR-3): report supported (the device IS Android) and no-op the toggles. The
-        // ArSessionService lifecycle is proven against FakeArSession; this device glue is the deferred,
-        // device-only, CI-untestable edge (architecture.md:591). Owner history: re-pointed from
-        // "Story 3.4 / 6.3" to 6.3 by Story 3.4, then to Story 8.3 (the AR-rig + device-glue story
-        // that retired 6.3's render/scene scope) — the session AND plane/anchor/spawn subsystems all
-        // wire to the same not-yet-placed scene AR rig 8.3 authors.
-        public bool IsSupported => true;
+        // Story 8.3 device body. Drives the scene-placed AR Foundation ARSession (authored into
+        // ARHunt.unity in Gate 1). The ARSession MonoBehaviour does not exist when Bootstrap constructs
+        // this adapter ([DefaultExecutionOrder(-1000)], before the rig is live), so the scene component is
+        // resolved LAZILY on first use — the ctor never touches the scene. All lifecycle DECISIONS stay in
+        // ArSessionService; this is thin subsystem glue. Never throws (NFR-3): every AR Foundation call
+        // that can throw is wrapped + logged and degrades.
+        private ARSession _session;
+        private CancellationTokenSource _startCts;
 
-        public Task StartAsync()
+        // Lazily find the scene's ARSession. Cached once resolved. Returns null (logged) if the rig is
+        // not present, so every member degrades to a no-op rather than NRE'ing.
+        private ARSession Session()
         {
-            GameLog.Info("ArcoreSession.StartAsync: device-path stub — the AR rig ARSession is not placed yet (TODO Story 8.3).");
-            return Task.CompletedTask;
+            if (_session != null)
+            {
+                return _session;
+            }
+
+            _session = Object.FindObjectOfType<ARSession>(includeInactive: true);
+            if (_session == null)
+            {
+                GameLog.Warn("ArcoreSession: no ARSession in the active scene — AR rig not loaded yet; degrading to no-op (NFR-3).");
+            }
+
+            return _session;
+        }
+
+        // ARCore availability. ARSession.state reflects the subsystem's support/checking result.
+        public bool IsSupported
+        {
+            get
+            {
+                ARSessionState state = ARSession.state;
+                return state != ARSessionState.Unsupported && state != ARSessionState.NeedsInstall;
+            }
+        }
+
+        // Enable the session + await it reaching a tracking-ready state (the expensive warmup). Honors the
+        // Stop-cancels-an-in-flight-StartAsync contract (IArSession.cs L72-82) via _startCts: Stop() cancels
+        // the token, so a pending warmup completes promptly and leaves the subsystem restartable.
+        public async Task StartAsync()
+        {
+            ARSession session = Session();
+            if (session == null)
+            {
+                return;
+            }
+
+            _startCts?.Cancel();
+            _startCts?.Dispose();
+            _startCts = new CancellationTokenSource();
+            CancellationToken token = _startCts.Token;
+
+            try
+            {
+                session.enabled = true;
+
+                // Await ARCore moving past init into a usable state (or a terminal unsupported result).
+                // SessionInitializing → SessionTracking is the tracking-ready acquisition.
+                while (!token.IsCancellationRequested)
+                {
+                    ARSessionState state = ARSession.state;
+                    if (state == ARSessionState.SessionTracking ||
+                        state == ARSessionState.Unsupported ||
+                        state == ARSessionState.NeedsInstall)
+                    {
+                        break;
+                    }
+
+                    await Task.Yield();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreSession.StartAsync failed; degrading (NFR-3). " + ex.Message);
+            }
         }
 
         public void Pause()
         {
-            GameLog.Info("ArcoreSession.Pause: device-path stub (TODO Story 8.3).");
+            ARSession session = Session();
+            if (session == null)
+            {
+                return;
+            }
+
+            try
+            {
+                session.enabled = false;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreSession.Pause failed; degrading (NFR-3). " + ex.Message);
+            }
         }
 
         public void Resume()
         {
-            GameLog.Info("ArcoreSession.Resume: device-path stub (TODO Story 8.3).");
+            ARSession session = Session();
+            if (session == null)
+            {
+                return;
+            }
+
+            try
+            {
+                session.enabled = true;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreSession.Resume failed; degrading (NFR-3). " + ex.Message);
+            }
         }
 
+        // Tear back toward cold. MUST cancel an in-flight StartAsync (concurrency contract) and leave the
+        // subsystem restartable: cancel the warmup token, then Reset() + disable.
         public void Stop()
         {
-            GameLog.Info("ArcoreSession.Stop: device-path stub (TODO Story 8.3).");
+            _startCts?.Cancel();
+
+            ARSession session = Session();
+            if (session == null)
+            {
+                return;
+            }
+
+            try
+            {
+                session.Reset();
+                session.enabled = false;
+            }
+            catch (System.Exception ex)
+            {
+                GameLog.Warn("ArcoreSession.Stop failed; degrading (NFR-3). " + ex.Message);
+            }
         }
 #else
         // Editor / non-Android: the AR Foundation subsystem does not exist. Report supported so the
